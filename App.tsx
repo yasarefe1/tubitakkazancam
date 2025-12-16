@@ -287,9 +287,19 @@ const App: React.FC = () => {
     }
   };
 
-  // Run once on mount - No sound on startup
+  // Run once on mount - Show demo boxes on startup
   useEffect(() => {
     setAiText("Sistem Hazır. Mod seçin.");
+    // Demo boxes to show how detection looks
+    setBoxes([
+      { label: "DEMO NESNE 1", ymin: 20, xmin: 10, ymax: 45, xmax: 40 },
+      { label: "DEMO NESNE 2", ymin: 55, xmin: 50, ymax: 80, xmax: 85 },
+    ]);
+    // Clear demo boxes after 5 seconds
+    const timer = setTimeout(() => {
+      setBoxes([]);
+    }, 5000);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
