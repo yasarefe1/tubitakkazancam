@@ -191,10 +191,10 @@ const App: React.FC = () => {
       // 1. Run immediately
       performAnalysis(mode);
 
-      // 2. Loop every 4 seconds
+      // 2. Loop every 2 seconds (faster for accessibility)
       intervalId = setInterval(() => {
         performAnalysis(mode);
-      }, 4000);
+      }, 2000);
     } else {
       setAiText("");
       setBoxes([]);
