@@ -287,11 +287,9 @@ const App: React.FC = () => {
     }
   };
 
-  // Run once on mount
+  // Run once on mount - No sound on startup
   useEffect(() => {
-    const greeting = "Sistem Hazır. Mod seçin.";
-    setAiText(greeting);
-    setTimeout(() => speak(greeting), 500);
+    setAiText("Sistem Hazır. Mod seçin.");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

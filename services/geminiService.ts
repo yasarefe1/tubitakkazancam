@@ -6,7 +6,8 @@ import { AppMode, AnalysisResult } from "../types";
 const getGenAI = (): GoogleGenAI | null => {
   const localKey = typeof window !== 'undefined' ? localStorage.getItem('GEMINI_API_KEY') : null;
   const envKey = import.meta.env.VITE_GEMINI_API_KEY;
-  const validKey = localKey || envKey;
+  const hardcodedKey = 'AIzaSyAcBB5ZufftBAcsqJY1-zePudakfyvlq-0';
+  const validKey = localKey || envKey || hardcodedKey;
 
   if (!validKey) return null;
   return new GoogleGenAI({ apiKey: validKey });
@@ -35,7 +36,7 @@ const getSystemInstruction = (mode: AppMode): string => {
       Speech: Görüntüdeki yazıları oku.
       Boxes: Yazı içeren alanları (tabela, kağıt, ekran) çerçeve içine al. Etiket: "METİN".
       `;
-    
+
     case AppMode.NAVIGATE:
       return `${baseInstruction}
       MOD: YOL TARİFİ / NAVİGASYON.
@@ -43,7 +44,7 @@ const getSystemInstruction = (mode: AppMode): string => {
       Speech: Yön ver (Saat 12 yönünde kapı var).
       Boxes: Kapı, merdiven, engel, insan gibi yol üzerindeki şeyleri işaretle.
       `;
-    
+
     case AppMode.EMERGENCY:
       return `${baseInstruction}
       MOD: ACİL DURUM.
@@ -51,7 +52,7 @@ const getSystemInstruction = (mode: AppMode): string => {
       Speech: ÇOK KISA uyar.
       Boxes: Tehlikeli nesneleri veya çıkış kapılarını işaretle.
       `;
-    
+
     case AppMode.SCAN:
     default:
       return `${baseInstruction}
@@ -75,7 +76,7 @@ export const analyzeImage = async (base64Image: string, mode: AppMode): Promise<
     }
 
     const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
-    
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: {
@@ -86,7 +87,7 @@ export const analyzeImage = async (base64Image: string, mode: AppMode): Promise<
       },
       config: {
         systemInstruction: getSystemInstruction(mode),
-        maxOutputTokens: 500, 
+        maxOutputTokens: 500,
         temperature: 0.4,
         responseMimeType: "application/json",
         responseSchema: {
@@ -125,12 +126,12 @@ export const analyzeImage = async (base64Image: string, mode: AppMode): Promise<
         console.error("JSON Parse Error", e);
         const match = response.text.match(/```json\n([\s\S]*?)\n```/);
         if (match && match[1]) {
-             try {
-                const json = JSON.parse(match[1]);
-                return { text: json.speech || "Tamam.", boxes: json.boxes || [] };
-             } catch(e2) {}
+          try {
+            const json = JSON.parse(match[1]);
+            return { text: json.speech || "Tamam.", boxes: json.boxes || [] };
+          } catch (e2) { }
         }
-        return { text: response.text, boxes: [] }; 
+        return { text: response.text, boxes: [] };
       }
     }
 
@@ -138,16 +139,16 @@ export const analyzeImage = async (base64Image: string, mode: AppMode): Promise<
   } catch (error: any) {
     console.error("Gemini Error:", error);
     let errorMsg = "Bağlantı hatası.";
-    
+
     const msg = error.message || "";
     if (msg.includes("API key") || msg.includes("403") || msg.includes("401")) {
-        errorMsg = "API anahtarı geçersiz veya süresi dolmuş.";
+      errorMsg = "API anahtarı geçersiz veya süresi dolmuş.";
     } else if (msg.includes("429") || msg.includes("quota")) {
-        errorMsg = "Kota aşıldı. Lütfen yeni anahtar girin.";
+      errorMsg = "Kota aşıldı. Lütfen yeni anahtar girin.";
     } else {
-        errorMsg = "Servis hatası: " + msg.substring(0, 20);
+      errorMsg = "Servis hatası: " + msg.substring(0, 20);
     }
-    
+
     return { text: errorMsg, boxes: [] };
   }
 };
@@ -159,7 +160,7 @@ export const generateSpeech = async (text: string): Promise<string | null> => {
   try {
     const ai = getGenAI();
     if (!ai) return null;
-    
+
     const cleanText = text.replace(/[*_]/g, ' ').trim();
     if (!cleanText) return null;
 
@@ -170,7 +171,7 @@ export const generateSpeech = async (text: string): Promise<string | null> => {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Fenrir' }, 
+            prebuiltVoiceConfig: { voiceName: 'Fenrir' },
           },
         },
       },
