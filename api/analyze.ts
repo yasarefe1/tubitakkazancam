@@ -86,8 +86,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     ],
                 },
             ],
-            // Kullanıcı talebi: llama-3.2-90b-vision kullan
-            model: "llama-3.2-90b-vision",
+            // Groq vision model (11b-preview çalışıyor)
+            model: "llama-3.2-11b-vision-preview",
             temperature: 0.1,
             max_tokens: 350,
             stream: false,
