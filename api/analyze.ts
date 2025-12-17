@@ -31,7 +31,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const apiKey = process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY; // GEMINI_API_KEY öncelikli
+        // Öncelikli olarak GEMINI_API_KEY'e bak, yoksa OPENROUTER_API_KEY'e bak
+        const apiKey = process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY;
 
         if (!apiKey) {
             console.error("HATA: API Key bulunamadı!");
@@ -51,18 +52,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Temizle
         base64Data = base64Data.replace(/[\n\r\s]/g, "");
 
-        console.log(`Gemini Analiz Başlıyor. Mod: ${mode || 'SCAN'}`);
+        // --- HİBRİT MANTIK: Key tipine göre provider seç ---
+        const isGoogleKey = apiKey.startsWith("AIza");
 
-        // Google Gemini API Call (Direct)
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-                        {
-                            text: `Sen "Üçüncü Göz" projesinin kör kullanıcı asistanısın. 
+        const systemPrompt = `Sen "Üçüncü Göz" projesinin kör kullanıcı asistanısın. 
 GÖREV: Görüntüyü analiz et ve kör kullanıcıyı YÖNET. 
 
 KURALLAR:
@@ -77,21 +70,55 @@ JSON FORMATINDA CEVAP VER:
   "boxes": []
 }
 
-Mod: ${mode || 'SCAN'}`
-                        }
-                    ]
-                }],
-                generationConfig: {
+Mod: ${mode || 'SCAN'}`;
+
+        let fetchUrl = "";
+        let fetchOptions: any = {};
+
+        if (isGoogleKey) {
+            // DOĞRUDAN GOOGLE GEMINI
+            console.log("Mod: Doğrudan Google Gemini API");
+            fetchUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+            fetchOptions = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ inlineData: { mimeType: "image/jpeg", data: base64Data } }, { text: systemPrompt }] }],
+                    generationConfig: { temperature: 0.1, maxOutputTokens: 800, responseMimeType: "application/json" }
+                })
+            };
+        } else {
+            // OPENROUTER ÜZERİNDEN GEMINI (Kota kısıtlı: 50/gün)
+            console.log("Mod: OpenRouter Proxy");
+            fetchUrl = 'https://openrouter.ai/api/v1/chat/completions';
+            fetchOptions = {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://tubitak19.vercel.app',
+                    'X-Title': 'Üçüncü Göz'
+                },
+                body: JSON.stringify({
+                    model: 'google/gemini-2.0-flash-exp:free',
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: systemPrompt },
+                            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Data}` } }
+                        ]
+                    }],
                     temperature: 0.1,
-                    maxOutputTokens: 800,
-                    responseMimeType: "application/json"
-                }
-            })
-        });
+                    max_tokens: 800
+                })
+            };
+        }
+
+        const response = await fetch(fetchUrl, fetchOptions);
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error("Gemini API Error:", errorText);
+            console.error("API Error Detail:", errorText);
 
             let userMsg = "Analiz Hatası.";
             if (response.status === 429) userMsg = "Günlük sınır doldu. Lütfen biraz bekleyin.";
@@ -100,13 +127,19 @@ Mod: ${mode || 'SCAN'}`
         }
 
         const data = await response.json();
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        let content = "";
+
+        if (isGoogleKey) {
+            content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        } else {
+            content = data.choices?.[0]?.message?.content;
+        }
 
         if (!content) {
             return res.status(200).json({ content: JSON.stringify({ speech: "Üzgünüm, şu an göremiyorum.", boxes: [] }) });
         }
 
-        console.log("Gemini Response:", content.substring(0, 100));
+        console.log("Response Succeeded:", content.substring(0, 50));
         return res.status(200).json({ content });
 
     } catch (error: any) {
