@@ -78,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 'X-Title': 'Üçüncü Göz'
             },
             body: JSON.stringify({
-                model: 'meta-llama/llama-3.2-11b-vision-instruct:free',
+                model: 'qwen/qwen-2.5-vl-7b-instruct:free',
                 messages: [
                     {
                         role: 'user',
