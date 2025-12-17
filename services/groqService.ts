@@ -19,8 +19,14 @@ export const analyzeImageWithGroq = async (base64Image: string, mode: AppMode): 
         });
 
         if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`Sunucu Hatası (${response.status}): ${errText}`);
+            let errorDetail = "Bilinmeyen sunucu hatası";
+            try {
+                const errJson = await response.json();
+                errorDetail = errJson.details || errJson.error || JSON.stringify(errJson);
+            } catch (e) {
+                errorDetail = await response.text();
+            }
+            throw new Error(`HATA ${response.status}: ${errorDetail}`);
         }
 
         const data = await response.json();
@@ -31,14 +37,15 @@ export const analyzeImageWithGroq = async (base64Image: string, mode: AppMode): 
                 const jsonMatch = content.match(/\{[\s\S]*\}/);
                 return JSON.parse(jsonMatch ? jsonMatch[0] : content) as AnalysisResult;
             } catch (e) {
+                console.warn("JSON Parse Hatası:", content);
                 return { text: content, boxes: [] };
             }
         }
 
-        return { text: "Boş yanıt.", boxes: [] };
+        return { text: "Yapay zeka sessiz kaldı.", boxes: [] };
 
     } catch (error: any) {
-        console.error("API Error:", error);
-        return { text: `Bağlantı Hatası: ${error.message}`, boxes: [] };
+        console.error("ANALİZ HATASI:", error);
+        return { text: `SORUN: ${error.message}`, boxes: [] };
     }
 };

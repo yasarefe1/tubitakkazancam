@@ -5,7 +5,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // CORS Headers
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
     res.setHeader(
         'Access-Control-Allow-Headers',
         'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
@@ -14,6 +14,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'OPTIONS') {
         res.status(200).end();
         return;
+    }
+
+    // Health Check (DEBUG için)
+    if (req.method === 'GET') {
+        const hasKey = !!(process.env.VITE_GROQ_API_KEY || process.env.GROQ_API_KEY);
+        return res.status(200).json({
+            status: "Sistem Ayakta",
+            apiKeyConfigured: hasKey,
+            environment: process.env.NODE_ENV
+        });
     }
 
     if (req.method !== 'POST') {
@@ -26,21 +36,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!apiKey) {
             console.error("HATA: API Key bulunamadı!");
             return res.status(500).json({
-                error: "API Key Eksik",
-                details: "Vercel'de VITE_GROQ_API_KEY veya GROQ_API_KEY tanımlanmamış."
+                error: "API Anahtarı Bulunamadı",
+                details: "Vercel'de VITE_GROQ_API_KEY değişkeni tanımlı mı? Lütfen Ayarlar -> Environment Variables kısmını kontrol et."
             });
         }
 
         const groq = new Groq({ apiKey });
 
-        const { image, mode } = req.body || {};
+        // Body parsing kontrolü
+        if (!req.body) {
+            return res.status(400).json({ error: "İstek gövdesi boş (Body is empty)" });
+        }
+
+        const { image, mode } = req.body;
 
         if (!image) {
             console.error("HATA: Resim verisi yok.");
-            return res.status(400).json({ error: 'Resim verisi eksik.' });
+            return res.status(400).json({ error: 'Resim verisi (image field) eksik.' });
         }
 
-        console.log(`İstek alındı. Mod: ${mode}, Resim boyutu: ${Math.round(image.length / 1024)} KB`);
+        console.log(`İstek alındı. Mod: ${mode}, Resim: ${image.substring(0, 30)}...`);
 
         const systemPrompt = `Sen kör bir kullanıcıya yardım eden asistan "Üçüncü Göz"sün.
 Görevin: Gördüğün sahneyi ve nesneleri analiz edip JSON formatında yanıtlamak.
@@ -72,7 +87,7 @@ Yanıt Formatı (KESİN): { "speech": "Kısa sesli uyarı", "boxes": [{"label": 
 
         if (!content) {
             console.error("Groq-SDK HATA: Boş yanıt");
-            throw new Error("Groq API boş yanıt döndürdü.");
+            throw new Error("Groq sunucusu boş bir cevap döndürdü.");
         }
 
         return res.status(200).json({ content });
@@ -80,15 +95,13 @@ Yanıt Formatı (KESİN): { "speech": "Kısa sesli uyarı", "boxes": [{"label": 
     } catch (error: any) {
         console.error('SERVER ERROR:', error);
 
-        // Hata türüne göre özel mesajlar
-        if (error.status === 413) {
-            return res.status(413).json({ error: "Görüntü çok büyük. Vercel limiti aşıldı." });
-        }
+        const statusCode = error.status || 500;
+        const errorMessage = error.message || 'Bilinmeyen sunucu hatası';
 
-        return res.status(error.status || 500).json({
-            error: error.message || 'Bilinmeyen sunucu hatası',
-            code: error.code || 'API_ERROR'
+        return res.status(statusCode).json({
+            error: errorMessage,
+            code: error.code || 'API_ERROR',
+            type: error.constructor.name
         });
     }
 }
-
