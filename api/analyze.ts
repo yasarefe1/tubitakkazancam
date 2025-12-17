@@ -86,8 +86,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     ],
                 },
             ],
-            // Groq vision model (11b-preview çalışıyor)
-            model: "llama-3.2-11b-vision-preview",
+            // Llama 4 Scout - Multimodal (Vision) Model
+            model: "meta-llama/llama-4-scout-17b-16e-instruct",
             temperature: 0.1,
             max_tokens: 350,
             stream: false,
