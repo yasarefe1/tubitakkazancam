@@ -23,4 +23,6 @@ export interface CameraHandle {
   takePhoto: () => string | null; // Returns base64 image
   toggleTorch: (on: boolean) => Promise<void>; // Controls flashlight
   setZoom: (level: number) => Promise<void>; // Controls digital zoom
+  switchCamera: () => Promise<void>; // Toggles between front/back
+  getVideoElement: () => HTMLVideoElement | null; // For object detection
 }

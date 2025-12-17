@@ -5,7 +5,11 @@ import CockpitLayer from './components/CockpitLayer';
 import BoundingBoxLayer from './components/BoundingBoxLayer';
 import SettingsModal from './components/SettingsModal';
 import { AppMode, CameraHandle, BoundingBox } from './types';
-import { analyzeImage, generateSpeech } from './services/geminiService';
+// import { analyzeImage, generateSpeech } from './services/geminiService';
+import { analyzeImageWithGroq } from './services/groqService';
+// import { generateSpeech } from './services/geminiService'; // Ses için lazım olabilir - İPTAL
+
+import { loadObjectDetectionModel, detectObjects, isModelLoaded } from './services/objectDetectionService';
 
 // --- Audio Helper Functions ---
 function decodeBase64(base64: string) {
@@ -30,12 +34,14 @@ const App: React.FC = () => {
   // Removed showIntro state
   const [mode, setMode] = useState<AppMode>(AppMode.IDLE);
   const [aiText, setAiText] = useState<string>("");
-  const [boxes, setBoxes] = useState<BoundingBox[]>([]);
+  const [boxes, setBoxes] = useState<BoundingBox[]>([]); // Gemini kutuları
+  const [detectedBoxes, setDetectedBoxes] = useState<BoundingBox[]>([]); // Gerçek zamanlı kutular
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isTorchOn, setIsTorchOn] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
+  const [isListening, setIsListening] = useState<boolean>(false); // Sesli komut durumu
 
   const cameraRef = useRef<CameraHandle>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -51,6 +57,55 @@ const App: React.FC = () => {
     isProcessingRef.current = isProcessing;
     modeRef.current = mode;
   }, [isProcessing, mode]);
+
+  // Load Detection Model
+  useEffect(() => {
+    loadObjectDetectionModel();
+  }, []);
+
+  // Real-time Detection Loop
+  useEffect(() => {
+    let animationFrameId: number;
+    let isLooping = true;
+
+    const loop = async () => {
+      if (!isLooping) return;
+
+      // IDLE dahil her zaman çalışsın
+      if (cameraRef.current && isModelLoaded()) {
+        const video = cameraRef.current.getVideoElement();
+        if (video && video.readyState === 4) {
+          const predictions = await detectObjects(video);
+
+          if (predictions.length > 0) {
+            const newBoxes: BoundingBox[] = predictions.map(p => ({
+              label: p.labelTr, // Sadece isim, yüzde yok!
+              ymin: p.bbox.ymin,
+              xmin: p.bbox.xmin,
+              ymax: p.bbox.ymax,
+              xmax: p.bbox.xmax
+            }));
+            setDetectedBoxes(newBoxes);
+          } else {
+            setDetectedBoxes([]);
+          }
+        }
+      } else {
+        setDetectedBoxes([]);
+      }
+
+      // Hız kontrolü: Her frame yerine biraz gecikmeli çağırabiliriz, ama requestAnimationFrame en akıcı olanı
+      // İşlemciyi yormamak için basit bir kontrol eklenebilir ama modern cihazlar kaldırır.
+      animationFrameId = requestAnimationFrame(loop);
+    };
+
+    loop();
+
+    return () => {
+      isLooping = false;
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [mode]);
 
   const initAudio = () => {
     if (!audioContextRef.current) {
@@ -112,44 +167,91 @@ const App: React.FC = () => {
     }
   };
 
-  const speak = useCallback(async (text: string) => {
-    if (isMuted || !text) return;
-    initAudio();
+  // --- GELIŞMIŞ TTS SİSTEMİ ---
+  const turkishVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
 
-    stopCurrentAudio();
+  // Sesleri yükle (Chrome'da async yükleniyor)
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
 
-    if (!audioContextRef.current) return;
+      // Önce Microsoft Türkçe sesi ara (Daha doğal, Windows yerel)
+      let bestVoice = voices.find(v =>
+        v.lang.startsWith('tr') && v.name.includes('Microsoft')
+      );
 
-    const cleanText = text.replace(/\*/g, '').trim();
-
-    const base64Audio = await generateSpeech(cleanText);
-
-    if (base64Audio) {
-      try {
-        const audioBytes = decodeBase64(base64Audio);
-        const audioBuffer = await decodeAudioData(audioBytes, audioContextRef.current);
-
-        const source = audioContextRef.current.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContextRef.current.destination);
-        source.start();
-        currentSourceRef.current = source;
-      } catch (e) {
-        console.error("Audio playback failed", e);
-        fallbackSpeak(cleanText);
+      // Yoksa Google Türkçe sesi ara
+      if (!bestVoice) {
+        bestVoice = voices.find(v =>
+          v.lang.startsWith('tr') && v.name.toLowerCase().includes('google')
+        );
       }
-    } else {
-      fallbackSpeak(cleanText);
-    }
-  }, [isMuted]);
 
-  const fallbackSpeak = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
-    const utterance = new SpeechSynthesisUtterance(text);
+      // Google yoksa herhangi bir Türkçe ses
+      if (!bestVoice) {
+        bestVoice = voices.find(v => v.lang.startsWith('tr'));
+      }
+
+      // Türkçe de yoksa varsayılan
+      if (!bestVoice && voices.length > 0) {
+        bestVoice = voices[0];
+      }
+
+      if (bestVoice) {
+        turkishVoiceRef.current = bestVoice;
+        console.log(`[TTS] Seçilen ses: ${bestVoice.name} (${bestVoice.lang})`);
+      }
+    };
+
+    // Hemen dene
+    loadVoices();
+
+    // Chrome için: sesler sonradan yüklenebilir
+    if ('onvoiceschanged' in window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    return () => {
+      if ('onvoiceschanged' in window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
+
+  const speak = useCallback((text: string) => {
+    if (isMuted || !text) return;
+
+    // Önceki sesi durdur
+    window.speechSynthesis.cancel();
+
+    // Temiz text
+    const cleanText = text
+      .replace(/[*{}\[\]"]/g, '')
+      .replace(/speech:|boxes:|label:/gi, '')
+      .trim();
+
+    if (!cleanText || cleanText.length < 3) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+
+    // En iyi sesi kullan
+    if (turkishVoiceRef.current) {
+      utterance.voice = turkishVoiceRef.current;
+    }
+
     utterance.lang = 'tr-TR';
-    utterance.rate = 1.1;
+    utterance.rate = 0.9; // Biraz daha yavaş ve anlaşılır
+    utterance.pitch = 0.9; // Biraz daha tok (robotikliği kırar)
+    utterance.volume = 1.0;
+
+    // Hangi sesin kullanıldığını logla (Kullanıcı görsün)
+    if (utterance.voice) {
+      console.log("Konuşan Ses:", utterance.voice.name);
+      // Ekrana basmak için event fırlatılabilir veya basitçe konsolda kalsın
+    }
+
     window.speechSynthesis.speak(utterance);
-  };
+  }, [isMuted]);
 
   const performAnalysis = async (targetMode: AppMode) => {
     if (isProcessingRef.current) return;
@@ -160,7 +262,8 @@ const App: React.FC = () => {
       const base64Image = cameraRef.current?.takePhoto();
 
       if (base64Image) {
-        const result = await analyzeImage(base64Image, targetMode);
+        // GROQ (LLAMA 3.2 VISION) - KULLANICI İSTEĞİ (SDK MODU)
+        const result = await analyzeImageWithGroq(base64Image, targetMode);
 
         // Only update if mode hasn't changed
         if (modeRef.current === targetMode) {
@@ -178,7 +281,7 @@ const App: React.FC = () => {
     }
   };
 
-  // --- AUTOMATIC LOOP LOGIC ---
+  // --- OTOMATİK MOD: 20 saniyede bir analiz (dakikada 3 istek = kota güvenli) ---
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
 
@@ -188,15 +291,15 @@ const App: React.FC = () => {
       setAiText("Analiz ediliyor...");
       manualTorchOverrideRef.current = false;
 
-      // 1. Run immediately
+      // 1. Hemen bir analiz yap
       performAnalysis(mode);
 
-      // 2. Loop every 4 seconds
+      // 2. Sonra 7 saniyede bir tekrarla (Flash-8b sayesinde hızlı ve ucuz)
       intervalId = setInterval(() => {
         performAnalysis(mode);
-      }, 4000);
+      }, 7000);
     } else {
-      setAiText("");
+      setAiText("Mod seçin.");
       setBoxes([]);
       stopCurrentAudio();
       setIsProcessing(false);
@@ -212,13 +315,15 @@ const App: React.FC = () => {
 
 
   const handleModeSelect = (selectedMode: AppMode) => {
+    playSound('click');
+    if (navigator.vibrate) navigator.vibrate(50);
+
     if (selectedMode === mode) {
+      // Aynı moda tıklarsa: Modu kapat
       setMode(AppMode.IDLE);
-      playSound('click');
     } else {
+      // Farklı mod seçildi
       setMode(selectedMode);
-      playSound('click');
-      if (navigator.vibrate) navigator.vibrate(50);
     }
   };
 
@@ -254,23 +359,18 @@ const App: React.FC = () => {
   const handleBoxClick = async (box: BoundingBox) => {
     playSound('click');
 
-    // Toggle Zoom Logic
-    // If currently 1.0, zoom to 2.0. If > 1.2, reset to 1.0.
+    // Zoom mantığı kaldırıldı (Kullanıcı isteği)
+    /*
     const newZoom = zoomLevel > 1.2 ? 1.0 : 2.0;
-
     setZoomLevel(newZoom);
-    // Clear boxes because the field of view has changed, so boxes are invalid
     setBoxes([]);
-
     if (cameraRef.current) {
       await cameraRef.current.setZoom(newZoom);
     }
+    */
 
-    if (newZoom > 1.0) {
-      speak(`${box.label} odaklanılıyor.`);
-    } else {
-      speak("Geniş açı.");
-    }
+    // Sadece nesnenin adını söyle
+    speak(`${box.label}`);
 
     // Force analysis after a short delay for camera to settle
     setTimeout(() => {
@@ -281,30 +381,84 @@ const App: React.FC = () => {
   };
 
   const handleBrightnessCheck = (brightness: number) => {
-    if (brightness < 40 && !isTorchOn && !manualTorchOverrideRef.current && mode !== AppMode.IDLE) {
+    // Flaş Histerezis Mantığı (Daha Hassas)
+    // Açma Eşiği: 100 (Hafif loşsa bile aç)
+    // Kapatma Eşiği: 180 (Bayağı aydınlıksa kapat)
+
+    if (manualTorchOverrideRef.current) return;
+
+    if (!isTorchOn && brightness < 100) {
       toggleTorch(true);
-      speak("Karanlık algılandı. Işık açılıyor.");
+      speak("Karanlık, ışık açıldı.");
+    } else if (isTorchOn && brightness > 180) {
+      toggleTorch(false);
     }
   };
 
-  // Run once on mount - Show demo boxes on startup
+  // Run once on mount
   useEffect(() => {
-    setAiText("Sistem Hazır. Mod seçin.");
-    // Demo boxes to show how detection looks
-    setBoxes([
-      { label: "DEMO NESNE 1", ymin: 20, xmin: 10, ymax: 45, xmax: 40 },
-      { label: "DEMO NESNE 2", ymin: 55, xmin: 50, ymax: 80, xmax: 85 },
-    ]);
-    // Clear demo boxes after 5 seconds
-    const timer = setTimeout(() => {
-      setBoxes([]);
-    }, 5000);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setAiText(""); // Kullanıcı isteği: Boş başlasın ("bişi deme")
   }, []);
+
+  // Sesli Komut Mantığı
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      if ((window as any).recognitionInstance) {
+        (window as any).recognitionInstance.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      speak("Sesli komut tarayıcınızda desteklenmiyor.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'tr-TR';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      playSound('click');
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript.toLowerCase();
+      console.log("Sesli Komut:", transcript);
+
+      if (transcript.includes("oku")) handleModeSelect(AppMode.READ);
+      else if (transcript.includes("tara")) handleModeSelect(AppMode.SCAN);
+      else if (transcript.includes("yol") || transcript.includes("navigasyon")) handleModeSelect(AppMode.NAVIGATE);
+      else if (transcript.includes("acil")) handleModeSelect(AppMode.EMERGENCY);
+      else if (transcript.includes("ışık") && transcript.includes("aç")) toggleTorch(true);
+      else if (transcript.includes("ışık") && (transcript.includes("kapat") || transcript.includes("söndür"))) toggleTorch(false);
+      else if (transcript.includes("dur") || transcript.includes("sus")) {
+        setMode(AppMode.IDLE);
+        stopCurrentAudio();
+      }
+      else {
+        speak("Anlaşılmadı.");
+      }
+    };
+
+    (window as any).recognitionInstance = recognition;
+    recognition.start();
+
+  }, [isListening, handleModeSelect, toggleTorch]);
 
   return (
     <main className="relative w-full h-full" onClick={initAudio}>
+      {/* App Liveness Indicator */}
+      <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full z-[9999] animate-pulse"></div>
+
       {/* Removed IntroLayer */}
 
       <CameraLayer
@@ -314,7 +468,7 @@ const App: React.FC = () => {
 
       {/* Visual Overlays */}
       <BoundingBoxLayer
-        boxes={boxes}
+        boxes={[...boxes, ...detectedBoxes]}
         onBoxClick={handleBoxClick}
       />
       <OverlayLayer />
@@ -328,6 +482,9 @@ const App: React.FC = () => {
         onToggleTorch={() => toggleTorch()}
         isMuted={isMuted}
         onToggleMute={toggleMute}
+        onSwitchCamera={() => cameraRef.current?.switchCamera()}
+        isListening={isListening}
+        onToggleListening={toggleListening}
         onOpenSettings={() => setShowSettings(true)}
       />
 

@@ -5,7 +5,7 @@ const OverlayLayer: React.FC = () => {
     <div
       className="absolute top-0 left-0 w-full h-full z-10 pointer-events-none"
       style={{
-        background: 'radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.3) 100%)'
+        background: 'transparent'
       }}
       aria-hidden="true"
     />
