@@ -31,119 +31,86 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const apiKey = process.env.OPENROUTER_API_KEY;
+        const apiKey = process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY; // GEMINI_API_KEY öncelikli
 
         if (!apiKey) {
-            console.error("HATA: OpenRouter API Key bulunamadı!");
-            return res.status(500).json({
-                error: "API Anahtarı Bulunamadı",
-                details: "Vercel'de OPENROUTER_API_KEY değişkeni tanımlı mı?"
-            });
+            console.error("HATA: API Key bulunamadı!");
+            return res.status(500).json({ error: "API Anahtarı Bulunamadı" });
         }
 
-        if (!req.body) {
-            return res.status(400).json({ error: "İstek gövdesi boş" });
-        }
-
-        let { image, mode } = req.body;
-
-        if (!image) {
+        if (!req.body || !req.body.image) {
             return res.status(400).json({ error: 'Resim verisi eksik.' });
         }
 
-        // --- GÖRÜNTÜ TEMİZLEME ---
+        const { image, mode } = req.body;
         let base64Data = image;
-        let mimeType = "image/jpeg";
         if (image.startsWith("data:")) {
-            const parts = image.split(",");
-            mimeType = parts[0].split(":")[1].split(";")[0];
-            base64Data = parts[1];
+            base64Data = image.split(",")[1];
         }
 
-        // Boşlukları ve yeni satırları temizle
+        // Temizle
         base64Data = base64Data.replace(/[\n\r\s]/g, "");
 
-        // Tekrar birleştir
-        const cleanImageUrl = `data:${mimeType};base64,${base64Data}`;
+        console.log(`Gemini Analiz Başlıyor. Mod: ${mode || 'SCAN'}`);
 
-        console.log(`OpenRouter Analiz Başlıyor. Mod: ${mode || 'SCAN'}, Boyut: ${Math.round(cleanImageUrl.length / 1024)} KB`);
-
-        // OpenRouter API Call
-        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        // Google Gemini API Call (Direct)
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://tubitak19.vercel.app',
-                'X-Title': 'Üçüncü Göz'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: 'google/gemini-2.0-flash-exp:free',
-                messages: [
-                    {
-                        role: 'user',
-                        content: [
-                            {
-                                type: 'text',
-                                text: `Sen kör bir kullanıcıya yardım eden görme asistanı "Üçüncü Göz"sün. 
+                contents: [{
+                    parts: [
+                        { inlineData: { mimeType: "image/jpeg", data: base64Data } },
+                        {
+                            text: `Sen "Üçüncü Göz" projesinin kör kullanıcı asistanısın. 
+GÖREV: Görüntüyü analiz et ve kör kullanıcıyı YÖNET. 
 
-GÖREV: Görüntüyü analiz et ve kör kullanıcıya DETAYLI yönlendirme yap. (Örneğin: "2 metre önünde çukur var, sağdan git").
-
-ÖNEMLİ KURALLAR:
-1. MESAFE TAHMİNİ YAP: "1 metre önünde", "2.5 metre sağında" gibi
-2. YÖN BELİRT: "sağdan", "soldan", "tam karşında" gibi
-3. ENGEL TÜRÜNÜ AÇIKLA: "duvar", "çukur", "merdiven" vs.
-4. TEHLİKE SEVİYESİ: Acilse "DİKKAT!" ile başla
-5. YÜRÜME TALİMATI VER: "sağa dön ve ilerle" gibi
+KURALLAR:
+1. MESAFE VE YÖN VER: "2 metre önünde çukur var, sağdan ilerle" gibi.
+2. ADIM ADIM TALİMAT: "3 adım sonra merdiven var, sola yanaş" gibi.
+3. TEHLİKE ANALİZİ: Potansiyel her riski (duvar, araç, basamak) bildir.
+4. EMİR KİPİ: "DUR", "İLERLE", "SAĞA DÖN" gibi net konuş.
 
 JSON FORMATINDA CEVAP VER:
 {
-  "speech": "DETAYLI TALİMAT BURAYA",
+  "speech": "Anlaşılır, detaylı ve yönlendirici sesli komut",
   "boxes": []
-}`
-                            },
-                            {
-                                type: 'image_url',
-                                image_url: {
-                                    url: cleanImageUrl
-                                }
-                            }
-                        ]
-                    }
-                ],
-                temperature: 0.1,
-                max_tokens: 800
+}
+
+Mod: ${mode || 'SCAN'}`
+                        }
+                    ]
+                }],
+                generationConfig: {
+                    temperature: 0.1,
+                    maxOutputTokens: 800,
+                    responseMimeType: "application/json"
+                }
             })
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error("OpenRouter API Error:", errorText);
+            console.error("Gemini API Error:", errorText);
 
-            // Kullanıcıya sesli söylenecek kısa hata
-            let msg = "API Hatası.";
-            if (response.status === 429) msg = "Günlük analiz sınırına ulaşıldı.";
+            let userMsg = "Analiz Hatası.";
+            if (response.status === 429) userMsg = "Günlük sınır doldu. Lütfen biraz bekleyin.";
 
-            return res.status(response.status).json({ content: JSON.stringify({ speech: msg, boxes: [] }) });
+            return res.status(response.status).json({ content: JSON.stringify({ speech: userMsg, boxes: [] }) });
         }
 
-        const completion = await response.json();
-        const content = completion.choices?.[0]?.message?.content;
+        const data = await response.json();
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (!content) {
-            return res.status(200).json({ content: JSON.stringify({ speech: "Görüntü analiz edilemedi.", boxes: [] }) });
+            return res.status(200).json({ content: JSON.stringify({ speech: "Üzgünüm, şu an göremiyorum.", boxes: [] }) });
         }
 
-        console.log("OpenRouter Response:", content.substring(0, 100));
-
+        console.log("Gemini Response:", content.substring(0, 100));
         return res.status(200).json({ content });
 
     } catch (error: any) {
         console.error('SERVER FATAL ERROR:', error);
-
-        return res.status(error.status || 500).json({
-            error: error.message || 'Bilinmeyen sunucu hatası',
-            details: error.toString()
-        });
+        return res.status(500).json({ error: error.message || 'Sunucu hatası' });
     }
 }
