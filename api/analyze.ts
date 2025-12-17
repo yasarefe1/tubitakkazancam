@@ -1,12 +1,8 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import Groq from 'groq-sdk';
 
-const groq = new Groq({
-    apiKey: process.env.VITE_GROQ_API_KEY, // Vercel Environment Variables'dan okuyacak
-});
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    // CORS Headers (Tarayıcıdan gelen isteği kabul etmesi için)
+    // CORS Headers
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -25,24 +21,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
+        const apiKey = process.env.VITE_GROQ_API_KEY || process.env.GROQ_API_KEY;
+
+        if (!apiKey) {
+            console.error("HATA: API Key bulunamadı!");
+            return res.status(500).json({
+                error: "API Key Eksik",
+                details: "Vercel'de VITE_GROQ_API_KEY veya GROQ_API_KEY tanımlanmamış."
+            });
+        }
+
+        const groq = new Groq({ apiKey });
+
         const { image, mode } = req.body || {};
 
-        if (!process.env.VITE_GROQ_API_KEY) {
-            console.error("Vercel'de VITE_GROQ_API_KEY tanımlanmamış!");
-            return res.status(500).json({ error: "Sunucu Yapılandırma Hatası: API Key Eksik. Lütfen Vercel Dashboard'dan VITE_GROQ_API_KEY ekleyin." });
-        }
-
         if (!image) {
-            console.error("İstek gövdesinde resim bulunamadı.");
+            console.error("HATA: Resim verisi yok.");
             return res.status(400).json({ error: 'Resim verisi eksik.' });
         }
+
+        console.log(`İstek alındı. Mod: ${mode}, Resim boyutu: ${Math.round(image.length / 1024)} KB`);
 
         const systemPrompt = `Sen kör bir kullanıcıya yardım eden asistan "Üçüncü Göz"sün.
 Görevin: Gördüğün sahneyi ve nesneleri analiz edip JSON formatında yanıtlamak.
 Mod: ${mode || 'SCAN'}
 Yanıt Formatı (KESİN): { "speech": "Kısa sesli uyarı", "boxes": [{"label": "Nesne", "ymin": 0, "xmin": 0, "ymax": 0, "xmax": 0}] }`;
-
-        console.log(`Analiz başlatılıyor: Mod=${mode}, Resim boyutu=${Math.round(image.length / 1024)} KB`);
 
         const completion = await groq.chat.completions.create({
             messages: [
@@ -68,19 +71,24 @@ Yanıt Formatı (KESİN): { "speech": "Kısa sesli uyarı", "boxes": [{"label": 
         const content = completion.choices[0]?.message?.content;
 
         if (!content) {
+            console.error("Groq-SDK HATA: Boş yanıt");
             throw new Error("Groq API boş yanıt döndürdü.");
         }
 
         return res.status(200).json({ content });
 
     } catch (error: any) {
-        console.error('Groq API Error:', error);
-        const statusCode = error.status || 500;
-        const errorMessage = error.message || 'Bilinmeyen sunucu hatası';
+        console.error('SERVER ERROR:', error);
 
-        return res.status(statusCode).json({
-            error: errorMessage,
-            details: error.response?.data || null
+        // Hata türüne göre özel mesajlar
+        if (error.status === 413) {
+            return res.status(413).json({ error: "Görüntü çok büyük. Vercel limiti aşıldı." });
+        }
+
+        return res.status(error.status || 500).json({
+            error: error.message || 'Bilinmeyen sunucu hatası',
+            code: error.code || 'API_ERROR'
         });
     }
 }
+
