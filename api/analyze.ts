@@ -78,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 'X-Title': 'Üçüncü Göz'
             },
             body: JSON.stringify({
-                model: 'qwen/qwen-2.5-vl-7b-instruct:free',
+                model: 'google/gemini-2.0-flash-exp:free',
                 messages: [
                     {
                         role: 'user',
@@ -87,26 +87,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                                 type: 'text',
                                 text: `Sen kör bir kullanıcıya yardım eden görme asistanı "Üçüncü Göz"sün. 
 
-GÖREV: Görüntüyü analiz et ve kör kullanıcıya DETAYLI yönlendirme yap.
+GÖREV: Görüntüyü analiz et ve kör kullanıcıya DETAYLI yönlendirme yap. (Örneğin: "2 metre önünde çukur var, sağdan git").
 
 ÖNEMLİ KURALLAR:
-1. MESAFE TAHMİNİ YAP: "1 metre önünde", "2.5 metre sağında", "yaklaşık 5 adım ileride" gibi
-2. YÖN BELİRT: "sağdan", "soldan", "tam karşında", "sağ çaprazında" gibi
-3. ENGEL TÜRÜNÜ AÇIKLA: "duvar", "masa", "merdiven", "çukur", "kaldırım", "araba" vs.
-4. TEHLİKE SEVİYESİ: Acil tehlikeler için "DİKKAT!" ile başla
-5. YÜRÜME TALİMATI VER: "sağa dön ve düz git", "sola doğru 2 adım at" gibi
-
-ÖRNEK CEVAPLAR:
-- "DİKKAT! 1.5 metre önünde duvar var. Sağa dön ve düz devam et."
-- "2 metre sağında masa var. Soldan dolaşabilirsin."
-- "Yaklaşık 3 adım ileride merdiven başlıyor. Yavaşla ve korkuluğu tut."
-- "Tam önünde açık alan var, güvenle ilerleyebilirsin."
-
-Mod: ${mode || 'SCAN'}
+1. MESAFE TAHMİNİ YAP: "1 metre önünde", "2.5 metre sağında" gibi
+2. YÖN BELİRT: "sağdan", "soldan", "tam karşında" gibi
+3. ENGEL TÜRÜNÜ AÇIKLA: "duvar", "çukur", "merdiven" vs.
+4. TEHLİKE SEVİYESİ: Acilse "DİKKAT!" ile başla
+5. YÜRÜME TALİMATI VER: "sağa dön ve ilerle" gibi
 
 JSON FORMATINDA CEVAP VER:
 {
-  "speech": "DETAYLI TALİMAT BURAYA (mesafe + yön + engel + ne yapmalı)",
+  "speech": "DETAYLI TALİMAT BURAYA",
   "boxes": []
 }`
                             },
@@ -127,14 +119,19 @@ JSON FORMATINDA CEVAP VER:
         if (!response.ok) {
             const errorText = await response.text();
             console.error("OpenRouter API Error:", errorText);
-            throw new Error(`OpenRouter API Error ${response.status}: ${errorText}`);
+
+            // Kullanıcıya sesli söylenecek kısa hata
+            let msg = "API Hatası.";
+            if (response.status === 429) msg = "Günlük analiz sınırına ulaşıldı.";
+
+            return res.status(response.status).json({ content: JSON.stringify({ speech: msg, boxes: [] }) });
         }
 
         const completion = await response.json();
         const content = completion.choices?.[0]?.message?.content;
 
         if (!content) {
-            throw new Error("OpenRouter API'den boş içerik geldi.");
+            return res.status(200).json({ content: JSON.stringify({ speech: "Görüntü analiz edilemedi.", boxes: [] }) });
         }
 
         console.log("OpenRouter Response:", content.substring(0, 100));
