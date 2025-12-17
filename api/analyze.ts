@@ -37,47 +37,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             console.error("HATA: API Key bulunamadı!");
             return res.status(500).json({
                 error: "API Anahtarı Bulunamadı",
-                details: "Vercel'de VITE_GROQ_API_KEY değişkeni tanımlı mı? Lütfen Ayarlar -> Environment Variables kısmını kontrol et."
+                details: "Vercel'de VITE_GROQ_API_KEY değişkeni tanımlı mı?"
             });
         }
 
         const groq = new Groq({ apiKey });
 
-        // Body parsing kontrolü
         if (!req.body) {
-            return res.status(400).json({ error: "İstek gövdesi boş (Body is empty)" });
+            return res.status(400).json({ error: "İstek gövdesi boş" });
         }
 
-        const { image, mode } = req.body;
+        let { image, mode } = req.body;
 
         if (!image) {
-            console.error("HATA: Resim verisi yok.");
-            return res.status(400).json({ error: 'Resim verisi (image field) eksik.' });
+            return res.status(400).json({ error: 'Resim verisi eksik.' });
         }
 
-        console.log(`İstek alındı. Mod: ${mode}, Resim: ${image.substring(0, 30)}...`);
+        // --- GÖRÜNTÜ TEMİZLEME (ULTIMATE) ---
+        // 1. Varsa header'ı ayır
+        let base64Data = image;
+        let mimeType = "image/jpeg";
+        if (image.startsWith("data:")) {
+            const parts = image.split(",");
+            mimeType = parts[0].split(":")[1].split(";")[0];
+            base64Data = parts[1];
+        }
 
-        const systemPrompt = `Sen kör bir kullanıcıya yardım eden asistan "Üçüncü Göz"sün.
-Görevin: Gördüğün sahneyi ve nesneleri analiz edip JSON formatında yanıtlamak.
-Mod: ${mode || 'SCAN'}
-Yanıt Formatı (KESİN): { "speech": "Kısa sesli uyarı", "boxes": [{"label": "Nesne", "ymin": 0, "xmin": 0, "ymax": 0, "xmax": 0}] }`;
+        // 2. Boşlukları ve yeni satırları KESİN temizle
+        base64Data = base64Data.replace(/[\n\r\s]/g, "");
+
+        // 3. Tekrar birleştir
+        const cleanImageUrl = `data:${mimeType};base64,${base64Data}`;
+
+        console.log(`Analiz Başlıyor. Mod: ${mode || 'SCAN'}, Temizlenmiş Boyut: ${Math.round(cleanImageUrl.length / 1024)} KB`);
 
         const completion = await groq.chat.completions.create({
             messages: [
                 {
                     role: "user",
                     content: [
-                        { type: "text", text: systemPrompt },
+                        { type: "text", text: `Sen kör bir kullanıcıya yardım eden asistan "Üçüncü Göz"sün. Mod: ${mode || 'SCAN'}. JSON FORMATINDA KISA CEVAP VER: { "speech": "...", "boxes": [] }` },
                         {
                             type: "image_url",
                             image_url: {
-                                url: image
+                                url: cleanImageUrl
                             }
                         }
                     ],
                 },
             ],
-            model: "llama-3.2-11b-vision-preview",
+            // 11b flakier olabilir, 90b daha sağlam
+            model: "llama-3.2-90b-vision-preview",
             temperature: 0.1,
             max_tokens: 350,
             stream: false,
@@ -86,22 +96,17 @@ Yanıt Formatı (KESİN): { "speech": "Kısa sesli uyarı", "boxes": [{"label": 
         const content = completion.choices[0]?.message?.content;
 
         if (!content) {
-            console.error("Groq-SDK HATA: Boş yanıt");
-            throw new Error("Groq sunucusu boş bir cevap döndürdü.");
+            throw new Error("Groq API'den boş içerik geldi.");
         }
 
         return res.status(200).json({ content });
 
     } catch (error: any) {
-        console.error('SERVER ERROR:', error);
+        console.error('SERVER FATAL ERROR:', error);
 
-        const statusCode = error.status || 500;
-        const errorMessage = error.message || 'Bilinmeyen sunucu hatası';
-
-        return res.status(statusCode).json({
-            error: errorMessage,
-            code: error.code || 'API_ERROR',
-            type: error.constructor.name
+        return res.status(error.status || 500).json({
+            error: error.message || 'Bilinmeyen sunucu hatası',
+            details: error.response?.data || error.stack
         });
     }
 }
