@@ -25,16 +25,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const { image, mode } = req.body;
+        const { image, mode } = req.body || {};
+
+        if (!process.env.VITE_GROQ_API_KEY) {
+            console.error("Vercel'de VITE_GROQ_API_KEY tanımlanmamış!");
+            return res.status(500).json({ error: "Sunucu Yapılandırma Hatası: API Key Eksik. Lütfen Vercel Dashboard'dan VITE_GROQ_API_KEY ekleyin." });
+        }
 
         if (!image) {
+            console.error("İstek gövdesinde resim bulunamadı.");
             return res.status(400).json({ error: 'Resim verisi eksik.' });
         }
 
         const systemPrompt = `Sen kör bir kullanıcıya yardım eden asistan "Üçüncü Göz"sün.
 Görevin: Gördüğün sahneyi ve nesneleri analiz edip JSON formatında yanıtlamak.
-Mod: ${mode}
+Mod: ${mode || 'SCAN'}
 Yanıt Formatı (KESİN): { "speech": "Kısa sesli uyarı", "boxes": [{"label": "Nesne", "ymin": 0, "xmin": 0, "ymax": 0, "xmax": 0}] }`;
+
+        console.log(`Analiz başlatılıyor: Mod=${mode}, Resim boyutu=${Math.round(image.length / 1024)} KB`);
 
         const completion = await groq.chat.completions.create({
             messages: [
@@ -45,23 +53,34 @@ Yanıt Formatı (KESİN): { "speech": "Kısa sesli uyarı", "boxes": [{"label": 
                         {
                             type: "image_url",
                             image_url: {
-                                url: image // Frontend'den gelen data:image/jpeg;base64... formatında olmalı
+                                url: image
                             }
                         }
                     ],
                 },
             ],
-            model: "llama-3.2-11b-vision-preview", // 90b yerine 11b (daha hızlı) veya isteğe göre 90b
+            model: "llama-3.2-11b-vision-preview",
             temperature: 0.1,
-            max_tokens: 300,
+            max_tokens: 350,
             stream: false,
         });
 
         const content = completion.choices[0]?.message?.content;
+
+        if (!content) {
+            throw new Error("Groq API boş yanıt döndürdü.");
+        }
+
         return res.status(200).json({ content });
 
     } catch (error: any) {
         console.error('Groq API Error:', error);
-        return res.status(500).json({ error: error.message || 'Sunucu hatası' });
+        const statusCode = error.status || 500;
+        const errorMessage = error.message || 'Bilinmeyen sunucu hatası';
+
+        return res.status(statusCode).json({
+            error: errorMessage,
+            details: error.response?.data || null
+        });
     }
 }
