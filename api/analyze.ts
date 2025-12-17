@@ -86,8 +86,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     ],
                 },
             ],
-            // 90b decommissioned olmuş, 11b-vision-preview hala aktif görünüyor
-            model: "llama-3.2-11b-vision-preview",
+            // Kullanıcı talebi: llama-3.2-90b-vision kullan
+            model: "llama-3.2-90b-vision",
             temperature: 0.1,
             max_tokens: 350,
             stream: false,
