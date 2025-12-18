@@ -235,15 +235,26 @@ const App: React.FC = () => {
     };
   }, []);
 
+  const lastSpeakTimeRef = useRef<number>(0);
+
   const speak = useCallback((text: string) => {
     if (isMuted || !text) return;
 
-    // Önceki sesi SADECE yeni bir konuşma başlarken durdur
-    // (Aynı metni tekrar okumayı önle)
+    const now = Date.now();
+    const isUrgent = text.toUpperCase().includes("DUR") || text.toUpperCase().includes("DİKKAT");
+    const timeSinceLastSpeak = now - lastSpeakTimeRef.current;
+
+    // ACİL DURUMSA: Hemen kes ve konuş (0ms)
+    // NORMAL DURUMSA: En az 2.5 saniye bekle (Cümle bitsin)
     if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-      // Kısa bir gecikme ekle ki yeni konuşma başlayabilsin
-      setTimeout(() => startSpeech(text), 10);
+      if (isUrgent || timeSinceLastSpeak > 2500) {
+        window.speechSynthesis.cancel();
+        setTimeout(() => startSpeech(text), 10);
+      } else {
+        // Hali hazırda konuşuyor ve acil değil -> Şimdilik sus, sıradaki kareyi bekle.
+        // Bu sayede "Masa va..." diye sözü kesilmez.
+        return;
+      }
     } else {
       startSpeech(text);
     }
