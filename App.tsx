@@ -5,9 +5,9 @@ import CockpitLayer from './components/CockpitLayer';
 import BoundingBoxLayer from './components/BoundingBoxLayer';
 import SettingsModal from './components/SettingsModal';
 import { AppMode, CameraHandle, BoundingBox } from './types';
-// import { analyzeImage, generateSpeech } from './services/geminiService';
-import { analyzeImageWithGroq } from './services/groqService';
-// import { generateSpeech } from './services/geminiService'; // Ses için lazım olabilir - İPTAL
+import { analyzeImage } from './services/geminiService';
+import { analyzeImageWithQwen } from './services/openRouterService';
+// import { analyzeImageWithGroq } from './services/groqService';
 
 import { loadObjectDetectionModel, detectObjects, isModelLoaded } from './services/objectDetectionService';
 
@@ -26,7 +26,7 @@ async function decodeAudioData(
   data: Uint8Array,
   ctx: AudioContext
 ): Promise<AudioBuffer> {
-  return await ctx.decodeAudioData(data.buffer);
+  return await ctx.decodeAudioData(data.buffer as ArrayBuffer);
 }
 // -----------------------------
 
@@ -83,9 +83,26 @@ const App: React.FC = () => {
               ymin: p.bbox.ymin,
               xmin: p.bbox.xmin,
               ymax: p.bbox.ymax,
-              xmax: p.bbox.xmax
+              xmax: p.bbox.xmax,
+              confidence: p.confidence // Güven skoru eklendi
             }));
             setDetectedBoxes(newBoxes);
+
+            // TİTREŞİM GERİ BİLDİRİMİ: Nesne çok yakınsa titret
+            const closestBox = newBoxes.reduce((closest, box) => {
+              const boxSize = (box.ymax - box.ymin) * (box.xmax - box.xmin);
+              const closestSize = (closest.ymax - closest.ymin) * (closest.xmax - closest.xmin);
+              return boxSize > closestSize ? box : closest;
+            });
+
+            const boxSize = (closestBox.ymax - closestBox.ymin) * (closestBox.xmax - closestBox.xmin);
+
+            // Büyük kutu = yakın nesne
+            if (boxSize > 3000 && navigator.vibrate) {
+              navigator.vibrate(100); // Kısa titreşim
+            } else if (boxSize > 5000 && navigator.vibrate) {
+              navigator.vibrate([100, 50, 100]); // Çift titreşim (çok yakın!)
+            }
           } else {
             setDetectedBoxes([]);
           }
@@ -221,13 +238,26 @@ const App: React.FC = () => {
   const speak = useCallback((text: string) => {
     if (isMuted || !text) return;
 
-    // Önceki sesi durdur
-    window.speechSynthesis.cancel();
+    // Önceki sesi SADECE yeni bir konuşma başlarken durdur
+    // (Aynı metni tekrar okumayı önle)
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      // Kısa bir gecikme ekle ki yeni konuşma başlayabilsin
+      setTimeout(() => startSpeech(text), 100);
+    } else {
+      startSpeech(text);
+    }
+  }, [isMuted]);
 
-    // Temiz text
+  const startSpeech = (text: string) => {
+    // Temiz text - JSON formatını agresif temizle
     const cleanText = text
-      .replace(/[*{}\[\]"]/g, '')
-      .replace(/speech:|boxes:|label:/gi, '')
+      .replace(/```json/gi, '')
+      .replace(/```/g, '')
+      .replace(/\{|\}|\[|\]|"|'/g, '')
+      .replace(/speech:|boxes:|label:|text:/gi, '')
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
 
     if (!cleanText || cleanText.length < 3) return;
@@ -240,8 +270,8 @@ const App: React.FC = () => {
     }
 
     utterance.lang = 'tr-TR';
-    utterance.rate = 0.9; // Biraz daha yavaş ve anlaşılır
-    utterance.pitch = 0.9; // Biraz daha tok (robotikliği kırar)
+    utterance.rate = 0.95; // Biraz yavaş ama anlaşılır
+    utterance.pitch = 1.05; // Hafif yüksek ton (daha canlı)
     utterance.volume = 1.0;
 
     // Hangi sesin kullanıldığını logla (Kullanıcı görsün)
@@ -251,7 +281,7 @@ const App: React.FC = () => {
     }
 
     window.speechSynthesis.speak(utterance);
-  }, [isMuted]);
+  };
 
   const performAnalysis = async (targetMode: AppMode) => {
     if (isProcessingRef.current) return;
@@ -262,13 +292,36 @@ const App: React.FC = () => {
       const base64Image = cameraRef.current?.takePhoto();
 
       if (base64Image) {
-        // GROQ (LLAMA 3.2 VISION) - KULLANICI İSTEĞİ (SDK MODU)
-        const result = await analyzeImageWithGroq(base64Image, targetMode);
+        let result;
+        const orKey = localStorage.getItem('OPENROUTER_API_KEY') || import.meta.env.VITE_OPENROUTER_API_KEY;
 
-        // Only update if mode hasn't changed
-        if (modeRef.current === targetMode) {
+        if (orKey) {
+          // QWEN VISION (OpenRouter)
+          console.log("🔵 OpenRouter (Qwen) kullanılıyor...");
+          try {
+            result = await analyzeImageWithQwen(base64Image, targetMode);
+            console.log("✅ Qwen başarılı!");
+          } catch (e: any) {
+            console.warn("❌ Qwen Hatası, Gemini'ye geçiliyor:", e.message);
+            // Hata sebebini kullanıcıya söyleyelim ki bilsin
+            if (e.message && (e.message.includes("401") || e.message.includes("402"))) {
+              speak("Open Router anahtarı hatalı, Gemini'ye geçiyorum.");
+            } else {
+              // Diğer hataları logla ama kullanıcıyı boğma
+              console.log("Qwen başarısız oldu.");
+            }
+            console.log("🟢 Gemini'ye geçiliyor...");
+            result = await analyzeImage(base64Image, targetMode);
+          }
+        } else {
+          // GEMINI VISION (Sadece Gemini Key varsa veya varsayılan)
+          console.log("🟢 Gemini kullanılıyor (OpenRouter key yok)...");
+          result = await analyzeImage(base64Image, targetMode);
+        }
+
+        if (modeRef.current === targetMode && result) {
           setAiText(result.text);
-          setBoxes(result.boxes); // Update bounding boxes
+          setBoxes(result.boxes);
           speak(result.text);
         }
       }
@@ -294,10 +347,10 @@ const App: React.FC = () => {
       // 1. Hemen bir analiz yap
       performAnalysis(mode);
 
-      // 2. Sonra 7 saniyede bir tekrarla (Flash-8b sayesinde hızlı ve ucuz)
+      // 2. Sonra 12 saniyede bir tekrarla (Kota güvenli)
       intervalId = setInterval(() => {
         performAnalysis(mode);
-      }, 7000);
+      }, 12000);
     } else {
       setAiText("Mod seçin.");
       setBoxes([]);
@@ -319,11 +372,48 @@ const App: React.FC = () => {
     if (navigator.vibrate) navigator.vibrate(50);
 
     if (selectedMode === mode) {
-      // Aynı moda tıklarsa: Modu kapat
       setMode(AppMode.IDLE);
     } else {
-      // Farklı mod seçildi
       setMode(selectedMode);
+
+      // Acil Durum Özel Mantığı
+      if (selectedMode === AppMode.EMERGENCY) {
+        handleEmergencyAction();
+      }
+    }
+  };
+
+  const handleEmergencyAction = () => {
+    speak("Acil durum modu aktif. Konumunuz alınıyor.");
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const mapUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+          const emerNumber = localStorage.getItem('EMERGENCY_NUMBER') || "";
+
+          if (emerNumber) {
+            speak("Konumunuz belirlendi. WhatsApp ile göndermek için ekrandaki kırmızı butona tekrar basın veya bu mesajı bekleyin.");
+            // WhatsApp linkini oluştur ve sakla (belki bir ref veya state ile)
+            const waUrl = `https://wa.me/${emerNumber.replace(/\D/g, '')}?text=Acil%20durum!%20Konumum:%20${encodeURIComponent(mapUrl)}`;
+
+            // Otomatik yönlendirme yerine kullanıcıya seçenek sunmak daha güvenli ama 
+            // kör kullanıcı için doğrudan açmak daha pratik olabilir.
+            setTimeout(() => {
+              window.open(waUrl, '_blank');
+            }, 3000);
+          } else {
+            speak("Konumunuz bulundu fakat kayıtlı acil durum numarası yok. Lütfen ayarlardan numara ekleyin.");
+          }
+        },
+        (error) => {
+          console.error("Konum hatası:", error);
+          speak("Konumunuz alınamadı. Lütfen konum iznini kontrol edin.");
+        }
+      );
+    } else {
+      speak("Cihazınız konum özelliğini desteklemiyor.");
     }
   };
 
@@ -434,18 +524,50 @@ const App: React.FC = () => {
       const transcript = event.results[0][0].transcript.toLowerCase();
       console.log("Sesli Komut:", transcript);
 
-      if (transcript.includes("oku")) handleModeSelect(AppMode.READ);
-      else if (transcript.includes("tara")) handleModeSelect(AppMode.SCAN);
-      else if (transcript.includes("yol") || transcript.includes("navigasyon")) handleModeSelect(AppMode.NAVIGATE);
-      else if (transcript.includes("acil")) handleModeSelect(AppMode.EMERGENCY);
-      else if (transcript.includes("ışık") && transcript.includes("aç")) toggleTorch(true);
-      else if (transcript.includes("ışık") && (transcript.includes("kapat") || transcript.includes("söndür"))) toggleTorch(false);
-      else if (transcript.includes("dur") || transcript.includes("sus")) {
+      // MOD DEĞİŞTİRME
+      if (transcript.includes("oku") || transcript.includes("okuma")) {
+        handleModeSelect(AppMode.READ);
+      }
+      else if (transcript.includes("tara") || transcript.includes("tarama") || transcript.includes("çevre")) {
+        handleModeSelect(AppMode.SCAN);
+      }
+      else if (transcript.includes("yol") || transcript.includes("navigasyon") || transcript.includes("git")) {
+        handleModeSelect(AppMode.NAVIGATE);
+      }
+      else if (transcript.includes("acil") || transcript.includes("yardım")) {
+        handleModeSelect(AppMode.EMERGENCY);
+      }
+
+      // ANLIK ANALİZ
+      else if (transcript.includes("ne görüyorsun") || transcript.includes("ne var") || transcript.includes("anlat") || transcript.includes("söyle")) {
+        if (modeRef.current !== AppMode.IDLE) {
+          performAnalysis(modeRef.current);
+          speak("Analiz ediyorum");
+        } else {
+          speak("Önce bir mod seç");
+        }
+      }
+
+      // IŞIK KONTROLÜ
+      else if (transcript.includes("ışık") && (transcript.includes("aç") || transcript.includes("yak"))) {
+        toggleTorch(true);
+        speak("Işık açıldı");
+      }
+      else if (transcript.includes("ışık") && (transcript.includes("kapat") || transcript.includes("söndür") || transcript.includes("kapa"))) {
+        toggleTorch(false);
+        speak("Işık kapatıldı");
+      }
+
+      // DURDURMA
+      else if (transcript.includes("dur") || transcript.includes("sus") || transcript.includes("kapat") || transcript.includes("durdur")) {
         setMode(AppMode.IDLE);
         stopCurrentAudio();
+        speak("Durdu");
       }
+
+      // ANLAŞILMADI
       else {
-        speak("Anlaşılmadı.");
+        speak("Anlaşılmadı. Tara, oku, yol veya acil de.");
       }
     };
 

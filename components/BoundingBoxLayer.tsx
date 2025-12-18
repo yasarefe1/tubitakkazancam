@@ -56,10 +56,15 @@ const BoundingBoxLayer: React.FC<BoundingBoxLayerProps> = ({ boxes, onBoxClick }
                 textTransform: 'uppercase',
                 letterSpacing: '1px',
                 borderRadius: '4px 4px 0 0',
-                boxShadow: '0 0 10px rgba(34,197,94,0.5)'
+                boxShadow: '0 0 10px rgba(34,197,94,0.5)',
+                display: 'flex',
+                gap: '8px'
               }}
             >
-              {box.label}
+              <span>{box.label}</span>
+              {box.confidence && (
+                <span style={{ opacity: 0.8 }}>%{Math.round(box.confidence * 100)}</span>
+              )}
             </div>
 
             {/* Scanning line animation */}

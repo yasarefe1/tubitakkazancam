@@ -12,6 +12,7 @@ export interface BoundingBox {
   xmin: number; // 0-100 percentage
   ymax: number; // 0-100 percentage
   xmax: number; // 0-100 percentage
+  confidence?: number; // 0-1 score
 }
 
 export interface AnalysisResult {

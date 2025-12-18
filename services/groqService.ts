@@ -19,12 +19,13 @@ export const analyzeImageWithGroq = async (base64Image: string, mode: AppMode): 
         });
 
         if (!response.ok) {
-            let errorDetail = "Bilinmeyen sunucu hatası";
+            const errorText = await response.text();
+            let errorDetail = errorText;
             try {
-                const errJson = await response.json();
-                errorDetail = errJson.details || errJson.error || JSON.stringify(errJson);
+                const errJson = JSON.parse(errorText);
+                errorDetail = errJson.details || errJson.error || errorText;
             } catch (e) {
-                errorDetail = await response.text();
+                // Not JSON, use raw text
             }
             throw new Error(`HATA ${response.status}: ${errorDetail}`);
         }

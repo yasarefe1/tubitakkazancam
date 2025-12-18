@@ -1,7 +1,11 @@
 import { AppMode, AnalysisResult, BoundingBox } from "../types";
 
-// API Key (.env.local'dan al)
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "REDACTED_GEMINI_API_KEY";
+// API Key Önceliği: 1. LocalStorage (Settings’ten) 2. Vite Env 3. Hardcoded
+const getApiKey = () => {
+  const storedKey = localStorage.getItem('GEMINI_API_KEY');
+  if (storedKey && storedKey.trim()) return storedKey.trim();
+  return import.meta.env.VITE_GEMINI_API_KEY || "REDACTED_GEMINI_API_KEY";
+};
 
 // Rate limiting variables
 let lastRequestTime = 0;
@@ -54,7 +58,7 @@ export const analyzeImage = async (base64Image: string, mode: AppMode): Promise<
     await waitForRateLimit();
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${getApiKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -75,6 +79,9 @@ export const analyzeImage = async (base64Image: string, mode: AppMode): Promise<
     );
 
     if (!response.ok) {
+      if (response.status === 429) {
+        return { text: "Sistem yoğun, lütfen bekleyiniz.", boxes: [] };
+      }
       return { text: "Bağlantı hatası: " + response.status, boxes: [] };
     }
 
