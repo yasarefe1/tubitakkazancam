@@ -34,10 +34,13 @@ FORMAT: {"speech": "kısa doğal cevap", "boxes": []}`;
 
   if (mode === AppMode.SCAN) {
     return `${base}
-MOD: TARAMA
-GÖREV: Çevreyi tarayıp en önemli nesneleri ve konumlarını anlat.
-ÖNCELİK: Tehlikeler > İnsanlar > Küçük Eşyalar (Meyve, Anahtar, Cüzdan).
-ÖRNEK: "Sağ tarafında koltuk var. Masanın üzerinde havuç ve cüzdan duruyor."`;
+MOD: TARAMA (DETAYLI ANALİZ)
+GÖREV: Çevreyi insan gibi anlat.
+KURALLAR:
+1. En fazla 2 cümle kur.
+2. Bağlaç kullan ("ve", "ayrıca").
+3. Hem ne olduğunu hem nerede olduğunu söyle.
+ÖRNEK: "Tam önünde geniş bir masa var. Masanın üzerinde bardak ve anahtarlar duruyor."`;
   }
 
   if (mode === AppMode.READ) {
@@ -48,17 +51,16 @@ GÖREV: Gördüğün tüm metinleri akıcı bir şekilde oku.`;
 
   if (mode === AppMode.NAVIGATE) {
     return `${base}
-MOD: YOL TARİFİ (SÜRÜCÜ MODU)
-GÖREV: Kullanıcıyı yürüt. Gördüğün GERÇEK nesnelere göre komut ver. (Hayal kurma).
-KOMUTLAR:
-- YOL AÇIKSA: "Saat 12 yönü temiz, ilerle."
-- ENGEL VARSA: "DUR! Önünde [NESNE] var. [YÖN] tarafından geç."
-- HEDEF VARSA: "Saat [YÖN] yönünde kapı var."
+MOD: YOL TARİFİ (RALLİ PİLOTU MODU)
+GÖREV: Kullanıcı hareket halinde. ÇARPMAMASI İÇİN PREFKSİZ KONUŞ.
+KURALLAR:
+1. ASLA CÜMLE KURMA. Sadece [DURUM] -> [YÖN].
+2. Çok hızlı ve kısa ol. "Masa var" deme. "ENGEL: MASA. SAĞA." de.
+3. Yol açıksa sadece "TEMİZ. İLERLE." de.
 
-ÖNEMLİ:
-1. Sadece "Saat 12", "Saat 3", "Saat 9" gibi kesin yön ver.
-2. Saçmalama. Görüntü net değilse "Önünü göremiyorum, dur" de.
-3. Kısa ve net ol.`;
+FORMAT:
+- ENGEL VARSA: "DUR! [NESNE]. [YÖN] YAP." (Örn: "DUR! DİREK. SOLA KAÇ.")
+- TEMİZSE: "TEMİZ. DÜZ."`;
   }
 
   if (mode === AppMode.EMERGENCY) {
