@@ -10,34 +10,46 @@ const getApiKeys = () => {
 };
 
 const getSystemInstruction = (mode: AppMode, customQuery?: string): string => {
-    // Ultra kısa master prompt
-    const base = `Sen kör asistanısın. Türkçe konuş. Kısa ol.
-FORMAT: {"speech": "kısa cevap", "boxes": []}`;
+    // GÜÇLENDİRİLMİŞ MASTER PROMPT
+    const base = `Sen çok gelişmiş, keskin gözlü bir "Üçüncü Göz" asistanısın.
+GÖREV: Görüntüdeki HER ŞEYİ (sebzeler, eşyalar, insanlar, engeller) en ince detayına kadar gör.
+KURALLAR: 
+1. Türkçe konuş.
+2. ÇOK KISA cevap ver (Telgraf tarzı: "Masa var" değil "Masa, 1m" de).
+3. Asla "görüntüde" veya "kamera" deme.
+4. Küçük nesneleri (havuç, anahtar, telefon) asla kaçırma.
+
+FORMAT: {"speech": "kısa ve net cevap", "boxes": []}`;
 
     if (customQuery) {
-        return `${base}\nSORU: "${customQuery}"\nCevap ver.`;
+        return `${base}\nSORU: "${customQuery}"\nSoruya odaklan ve net cevap ver.`;
     }
 
     if (mode === AppMode.SCAN) {
         return `${base}
-GÖREV: Çevreyi özetle. Tehlike varsa ÖNCE söyle.
-PARA: SADECE para görürsen "Toplam X TL" de. Görmezsen paradan HİÇ bahsetme, sus.`;
+MOD: TARAMA
+GÖREV: Çevreyi tarayıp en önemli nesneleri söyle.
+ÖNCELİK: Tehlikeler > İnsanlar > Küçük Eşyalar (Meyve, Anahtar, Cüzdan).
+ÖRNEK: "Önde koltuk, masada havuç var."`;
     }
 
     if (mode === AppMode.READ) {
         return `${base}
-GÖREV: Gördüğün yazıyı oku. Yorum yapma.`;
+MOD: OKUMA
+GÖREV: Gördüğün tüm metinleri OLDUĞU GİBİ oku. Yorum yapma.`;
     }
 
     if (mode === AppMode.NAVIGATE) {
         return `${base}
-GÖREV: Yönlendir. Komutlar: DUR, SAĞA, SOLA, İLERLE.
-Tehlike varsa DUR de.`;
+MOD: YOL TARİFİ
+GÖREV: Kör birini yürütüyorsun. Anlık komut ver: DUR, SAĞA, SOLA, DÜZ.
+Tehlike varsa bağırarak uyar.`;
     }
 
     if (mode === AppMode.EMERGENCY) {
         return `${base}
-GÖREV: En yakın çıkışı bul. Hızlı yönlendir.`;
+MOD: ACİL DURUM
+GÖREV: En hızlı çıkış yolunu bul.`;
     }
 
     return base;
