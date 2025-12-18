@@ -139,23 +139,34 @@ export const detectObjects = async (
     try {
         const predictions = await model.detect(videoElement);
 
-        return predictions.map((pred) => {
-            const [x, y, width, height] = pred.bbox;
-            const videoWidth = videoElement.videoWidth;
-            const videoHeight = videoElement.videoHeight;
+        return predictions
+            .filter(pred => turkishLabels[pred.class]) // Sadece Türkçe karşılığı olanları al
+            .map((pred) => {
+                const [x, y, width, height] = pred.bbox;
+                const videoWidth = videoElement.videoWidth;
+                const videoHeight = videoElement.videoHeight;
 
-            return {
-                label: pred.class,
-                labelTr: turkishLabels[pred.class] || pred.class,
-                confidence: pred.score,
-                bbox: {
-                    xmin: (x / videoWidth) * 100,
-                    ymin: (y / videoHeight) * 100,
-                    xmax: ((x + width) / videoWidth) * 100,
-                    ymax: ((y + height) / videoHeight) * 100,
-                },
-            };
-        });
+                // Koordinatları normalize et (0-100 arası yüzdelik)
+                // Video zaten tam ekran olduğu için doğrudan video boyutlarına bölüyoruz
+                // ancak CSS'de object-fit: cover olduğu için hizalama kayabilir.
+                // En sağlıklısı:
+                const xmin = (x / videoWidth) * 100;
+                const ymin = (y / videoHeight) * 100;
+                const xmax = ((x + width) / videoWidth) * 100;
+                const ymax = ((y + height) / videoHeight) * 100;
+
+                return {
+                    label: pred.class,
+                    labelTr: turkishLabels[pred.class],
+                    confidence: pred.score,
+                    bbox: {
+                        xmin,
+                        ymin,
+                        xmax,
+                        ymax
+                    }
+                };
+            });
     } catch (error) {
         console.error('[ObjectDetection] Tespit hatası:', error);
         return [];
