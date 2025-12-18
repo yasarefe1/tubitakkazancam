@@ -38,10 +38,20 @@ export const analyzeImageWithQwen = async (
     mode: AppMode,
     customQuery?: string
 ): Promise<AnalysisResult> => {
-    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || localStorage.getItem('OPENROUTER_API_KEY');
+    // ÖNCELİK: 1. ENV, 2. LocalStorage
+    const envKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+    const localKey = localStorage.getItem('OPENROUTER_API_KEY');
+
+    let apiKey = envKey || localKey;
+
+    // Eğer ENV varsa ve LocalStorage farklıysa, ENV kazansın ve LocalStorage'ı temizleyelim
+    if (envKey && localKey && envKey.trim() !== localKey.trim()) {
+        localStorage.setItem('OPENROUTER_API_KEY', envKey.trim());
+        apiKey = envKey;
+    }
 
     if (!apiKey) {
-        throw new Error('OpenRouter API anahtarı bulunamadı.');
+        throw new Error('OpenRouter API anahtarı bulunamadı. Ayarlar kısmından kontrol edin.');
     }
 
     const systemPrompt = getSystemPrompt(mode);
@@ -82,18 +92,22 @@ export const analyzeImageWithQwen = async (
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                const status = response.status;
-                const msg = errorData.error?.message || '';
+                const error = await response.json().catch(() => ({}));
+                const msg = error.error?.message || '';
 
-                console.warn(`⚠️ ${modelId} başarısız (${status}): ${msg}`);
+                console.warn(`⚠️ ${modelId} başarısız (${response.status}): ${msg}`);
 
-                if (status === 402 || status === 400 || msg.includes("credits") || msg.includes("not found") || msg.includes("endpoint")) {
-                    lastError = msg || `Hata: ${status}`;
+                // KESİN ÇÖZÜM: User not found veya 401 gelirse direkt dur
+                if (response.status === 401 || msg.toLowerCase().includes("user not found")) {
+                    throw new Error("API Anahtarı Geçersiz veya Bulunamadı (User Not Found).");
+                }
+
+                if (response.status === 402 || response.status === 400 || msg.includes("credits") || msg.includes("not found") || msg.includes("endpoint")) {
+                    lastError = msg || `Hata: ${response.status}`;
                     continue;
                 }
 
-                throw new Error(msg || `API Hatası: ${status}`);
+                throw new Error(msg || `API Hatası: ${response.status}`);
             }
 
             const data = await response.json();
