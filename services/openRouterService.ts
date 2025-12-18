@@ -1,173 +1,129 @@
-import { AppMode, AnalysisResult } from "../types";
+import { AnalysisResult, AppMode } from '../types';
 
-// API Key Helper - 2 Key kullanır
-const getApiKeys = () => {
-    return {
-        key1: import.meta.env.VITE_OPENROUTER_API_KEY || localStorage.getItem('OPENROUTER_API_KEY') || "",
-        key2: import.meta.env.VITE_OPENROUTER_API_KEY_2 || ""
+/**
+ * Görme engelliler için optimize edilmiş, mekansal ve mod duyarlı sistem promptu oluşturur.
+ */
+const getSystemPrompt = (mode: AppMode): string => {
+    const basePrompt = `Sen "Üçüncü Göz" AI asistanısın. Görme engelli kullanıcıya dünyayı anlatıyorsun.
+HİYERARŞİ VE KURALLAR (ÖNEMLİ):
+1. Önce Basitlik: Nesnelerin adını doğrudan söyle (örn: "Sandalye", "Masa"). 
+2. Önce Güvenlik: Kullanıcının önündeki engelleri (basamak, sehpa, kablo) "Dikkat et" uyarısıyla en başta söyle.
+3. Mekansal Bilgi: Saat yönü tekniğini kullan (örn: "Saat 2 yönünde sandalye var, dikkat et").
+4. Mesafe: Yakınlığı belirt (Dibinde, 1 metre, 3 metre).
+5. Netlik: "Görüyorum" gibi gereksiz kelimeleri at. Doğrudan "Sandalyeye dikkat et" veya "Önün boş" de.`;
+
+    const modePrompts: Record<string, string> = {
+        [AppMode.SCAN]: `MOD: TARAMA. Çevrede ne olduğunu genel olarak betimle. Önemli nesneleri ve konumlarını söyle.`,
+        [AppMode.READ]: `MOD: OKUMA. Görüntüdeki metinlere odaklan. Tabela, belge veya ekranlardaki yazıları oku. Eğer metin yoksa belirt.`,
+        [AppMode.NAVIGATE]: `MOD: YOL TARİFİ. Yürünebilir alanlara, kapılara ve engellere odaklan. Sol-sağ yönlendirmeleri yap.`,
+        [AppMode.EMERGENCY]: `MOD: ACİL DURUM. Sadece en kritik güvenlik risklerini hemen söyle. Tehlike yoksa güvenli olduğunu belirt.`
     };
+
+    return `${basePrompt}\n${modePrompts[mode] || modePrompts[AppMode.SCAN]}
+    
+JSON FORMATINDA CEVAP VER:
+{
+  "speech": "Anlatım metni buraya",
+  "boxes": [{"label": "nesne adı", "ymin": 0, "xmin": 0, "ymax": 100, "xmax": 100}]
+}
+KRİTİK: Sadece JSON döndür.`;
 };
 
-const getSystemInstruction = (mode: AppMode, customQuery?: string): string => {
-    // GÜÇLENDİRİLMİŞ 'BİYOLOJİK GÖZ' PROMPT
-    const base = `Sen bir YAPAY ZEKA DEĞİLSİN. Sen kör bir insanın BİYOLOJİK GÖZÜSÜN.
-GÖREVİN: Görsel veriyi sesli veriye çevirmek.
-KESİN KURALLAR:
-1. EDEBİYAT YAPMA: "Güzel bir masa" deme. "Masa" de.
-2. YORUM YAPMA: "Tehlikeli olabilir" deme. "Çukur var" de. Kararı kullanıcı verir.
-3. ASLA "Görüntüde", "Kadrada", "Sanırım" kelimelerini kullanma.
-4. ÇOK NET VE KABA OL. Kibarlık zaman kaybettirir.
+/**
+ * OpenRouter üzerinden görüntüyü analiz eder.
+ */
+export const analyzeImageWithQwen = async (
+    base64Image: string,
+    mode: AppMode,
+    customQuery?: string
+): Promise<AnalysisResult> => {
+    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || localStorage.getItem('OPENROUTER_API_KEY');
 
-FORMAT: {"speech": "net veri", "boxes": []}`;
-
-    if (customQuery) {
-        return `${base}\nSORU: "${customQuery}"\nSoruya odaklan ve doğal cevap ver.`;
+    if (!apiKey) {
+        throw new Error('OpenRouter API anahtarı bulunamadı.');
     }
 
-    if (mode === AppMode.SCAN) {
-        return `${base}
-MOD: TARAMA (DETAYLI ANALİZ)
-GÖREV: Çevreyi insan gibi anlat.
-KURALLAR:
-1. En fazla 2 cümle kur.
-2. Bağlaç kullan ("ve", "ayrıca").
-3. Hem ne olduğunu hem nerede olduğunu söyle.
-ÖRNEK: "Tam önünde geniş bir masa var. Masanın üzerinde bardak ve anahtarlar duruyor."`;
-    }
+    const systemPrompt = getSystemPrompt(mode);
 
-    if (mode === AppMode.READ) {
-        return `${base}
-MOD: OKUMA
-GÖREV: Gördüğün tüm metinleri akıcı bir şekilde oku.`;
-    }
+    // Kullanmak istediğimiz modeller (Öncelik sırasına göre)
+    const models = [
+        'qwen/qwen-2.5-vl-72b-instruct',
+        'qwen/qwen3-vl-32b-instruct',
+        'qwen/qwen-2.5-vl-7b-instruct:free'
+    ];
 
-    if (mode === AppMode.NAVIGATE) {
-        return `${base}
-MOD: YOL TARİFİ (RALLİ PİLOTU MODU)
-GÖREV: Kullanıcı hareket halinde. ÇARPMAMASI İÇİN PREFKSİZ KONUŞ.
-KURALLAR:
-1. ASLA CÜMLE KURMA. Sadece [DURUM] -> [YÖN].
-2. Çok hızlı ve kısa ol. "Masa var" deme. "ENGEL: MASA. SAĞA." de.
-3. Yol açıksa sadece "TEMİZ. İLERLE." de.
+    let lastError = null;
 
-FORMAT:
-- ENGEL VARSA: "DUR! [NESNE]. [YÖN] YAP." (Örn: "DUR! DİREK. SOLA KAÇ.")
-- TEMİZSE: "TEMİZ. DÜZ."`;
-    }
-
-    if (mode === AppMode.EMERGENCY) {
-        return `${base}
-MOD: ACİL DURUM
-GÖREV: En hızlı çıkış yolunu bul ve panik yapmadan yönlendir.`;
-    }
-
-    return base;
-};
-
-const makeRequest = async (apiKey: string, model: string, systemPrompt: string, userMessage: string, imageUrl: string) => {
-    const siteUrl = typeof window !== 'undefined' ? window.location.origin : "https://localhost:3000";
-
-    const maxRetries = 3;
-    let attempt = 0;
-
-    while (attempt < maxRetries) {
+    for (const modelId of models) {
         try {
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                method: "POST",
+            console.log(`🚀 OpenRouter denemesi: ${modelId}`);
+
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
                 headers: {
-                    "Authorization": `Bearer ${apiKey}`,
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": siteUrl,
-                    "X-Title": "Third Eye App"
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://tubitak-third-eye.vercel.app',
+                    'X-Title': 'Üçüncü Göz'
                 },
                 body: JSON.stringify({
-                    model: model,
-                    messages: [
-                        { role: "system", content: systemPrompt },
-                        {
-                            role: "user",
-                            content: [
-                                { type: "text", text: userMessage },
-                                { type: "image_url", image_url: { url: imageUrl } }
-                            ]
-                        }
-                    ],
-                    max_tokens: 1000,
+                    model: modelId,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: customQuery || systemPrompt },
+                            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+                        ]
+                    }],
                     temperature: 0.1,
-                    response_format: { type: "json_object" }
-                })
+                    max_tokens: 800
+                }),
             });
 
             if (!response.ok) {
-                const errorText = await response.text();
-                // 429 (Rate Limit) veya 5xx (Server Error) ise tekrar dene
-                if (response.status === 429 || response.status >= 500) {
-                    console.warn(`${model} Meşgul (${response.status}), tekrar deneniyor... (${attempt + 1}/${maxRetries})`);
-                    attempt++;
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
+                const errorData = await response.json().catch(() => ({}));
+                const status = response.status;
+                const msg = errorData.error?.message || '';
+
+                console.warn(`⚠️ ${modelId} başarısız (${status}): ${msg}`);
+
+                if (status === 402 || status === 400 || msg.includes("credits") || msg.includes("not found") || msg.includes("endpoint")) {
+                    lastError = msg || `Hata: ${status}`;
                     continue;
                 }
-                throw new Error(`${model} Hatası (${response.status}): ${errorText}`);
+
+                throw new Error(msg || `API Hatası: ${status}`);
             }
 
             const data = await response.json();
+            console.log(`📥 ${modelId} yanıtı alındı.`);
+
             const content = data.choices?.[0]?.message?.content;
+            if (!content) continue;
 
-            if (!content) throw new Error("Boş yanıt döndü");
-
-            let cleanContent = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+            let parsedContent;
             try {
-                const parsed = JSON.parse(cleanContent);
-                if (parsed.speech) return { text: parsed.speech, boxes: parsed.boxes || [] };
-                if (parsed.text) return { text: parsed.text, boxes: parsed.boxes || [] };
-                return parsed;
-            } catch (jsonError) {
-                console.warn("JSON Parse Hatası:", content);
-                return { text: content, boxes: [] };
+                const jsonMatch = content.match(/\{[\s\S]*\}/);
+                const jsonStr = jsonMatch ? jsonMatch[0] : content;
+                parsedContent = JSON.parse(jsonStr);
+            } catch (e) {
+                parsedContent = {
+                    speech: content.replace(/\{|\}|\[|\]|"|'/g, ''),
+                    boxes: []
+                };
             }
 
+            return {
+                text: parsedContent.speech || parsedContent.text || content,
+                boxes: parsedContent.boxes || []
+            };
+
         } catch (error: any) {
-            console.warn(`Deneme ${attempt + 1} başarısız:`, error.message);
-            if (attempt === maxRetries - 1) throw error; // Son denemeydi, hatayı fırlat
-            attempt++;
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.error(`🔴 ${modelId} hatası:`, error.message);
+            lastError = error.message;
+            if (error.message.includes("fetch")) throw error;
         }
     }
 
-    throw new Error("Sunucu çok yoğun, daha sonra tekrar deneyin.");
-};
-
-export const analyzeImageWithQwen = async (base64Image: string, mode: AppMode, customQuery?: string): Promise<AnalysisResult> => {
-    const keys = getApiKeys();
-
-    let imageUrl = base64Image;
-    if (!base64Image.startsWith("data:")) {
-        imageUrl = `data:image/jpeg;base64,${base64Image}`;
-    }
-
-    const systemPrompt = getSystemInstruction(mode, customQuery);
-    const userMessage = customQuery ? `Soru: ${customQuery}` : `Bu görüntüyü analiz et (Mod: ${mode})`;
-
-    // Qwen VL modelleri - OpenRouter
-    // 1. DENEME: Qwen3 VL 32B (Key 1) - En güçlü
-    if (keys.key1) {
-        try {
-            console.log("🔵 1. Deneme: Qwen3 VL 32B...");
-            return await makeRequest(keys.key1, "qwen/qwen3-vl-32b-instruct", systemPrompt, userMessage, imageUrl);
-        } catch (error: any) {
-            console.warn("❌ Qwen3 32B başarısız:", error.message);
-        }
-    }
-
-    // 2. DENEME: Qwen 2.5 VL 7B (Key 2) - Hızlı yedek
-    if (keys.key2) {
-        try {
-            console.log("🟡 2. Deneme: Qwen 2.5 VL 7B...");
-            return await makeRequest(keys.key2, "qwen/qwen-2.5-vl-7b-instruct", systemPrompt, userMessage, imageUrl);
-        } catch (error: any) {
-            console.warn("❌ Qwen 2.5 7B başarısız:", error.message);
-        }
-    }
-
-    throw new Error("Tüm modeller başarısız oldu. İnternet bağlantını kontrol et veya daha sonra tekrar dene.");
+    throw new Error(lastError || "Tüm modeller denendi ama yanıt alınamadı.");
 };

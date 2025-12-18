@@ -88,19 +88,19 @@ Mod: ${mode || 'SCAN'}`;
                 })
             };
         } else {
-            // OPENROUTER ÜZERİNDEN GEMINI (Kota kısıtlı: 50/gün)
-            console.log("Mod: OpenRouter Proxy");
+            // OPENROUTER ÜZERİNDEN QWEN VL - Vision Language Model
+            console.log("🚀 Vercel Backend: OpenRouter Qwen3 VL analizi başlıyor...");
             fetchUrl = 'https://openrouter.ai/api/v1/chat/completions';
             fetchOptions = {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json',
-                    'HTTP-Referer': 'https://tubitak19.vercel.app',
+                    'HTTP-Referer': 'https://tubitak-third-eye.vercel.app',
                     'X-Title': 'Üçüncü Göz'
                 },
                 body: JSON.stringify({
-                    model: 'google/gemini-2.0-flash-exp:free',
+                    model: 'qwen/qwen-2.5-vl-7b-instruct:free',
                     messages: [{
                         role: 'user',
                         content: [
@@ -118,17 +118,19 @@ Mod: ${mode || 'SCAN'}`;
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error("API Error Detail:", errorText);
+            console.error("❌ Vercel Backend API Hatası:", response.status, errorText);
 
             let userMsg = "Analiz Hatası.";
-            if (response.status === 429) userMsg = "Günlük sınır doldu. Lütfen biraz bekleyin.";
+            if (response.status === 429) userMsg = "Günlük sınır doldu veya kota aşıldı.";
+            if (response.status === 401 || response.status === 403) userMsg = "API Anahtarı geçersiz.";
 
             return res.status(response.status).json({ content: JSON.stringify({ speech: userMsg, boxes: [] }) });
         }
 
         const data = await response.json();
-        let content = "";
+        console.log("📥 Vercel Backend: Yanıt alındı.");
 
+        let content = "";
         if (isGoogleKey) {
             content = data.candidates?.[0]?.content?.parts?.[0]?.text;
         } else {
@@ -136,10 +138,9 @@ Mod: ${mode || 'SCAN'}`;
         }
 
         if (!content) {
-            return res.status(200).json({ content: JSON.stringify({ speech: "Üzgünüm, şu an göremiyorum.", boxes: [] }) });
+            return res.status(200).json({ content: JSON.stringify({ speech: "Üzgünüm, şu an görüntüyü işleyemiyorum.", boxes: [] }) });
         }
 
-        console.log("Response Succeeded:", content.substring(0, 50));
         return res.status(200).json({ content });
 
     } catch (error: any) {
