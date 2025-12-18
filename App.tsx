@@ -241,23 +241,29 @@ const App: React.FC = () => {
     if (isMuted || !text) return;
 
     const now = Date.now();
-    const isUrgent = text.toUpperCase().includes("DUR") || text.toUpperCase().includes("DİKKAT");
+    const isUrgent = text.toUpperCase().includes("DUR") || text.toUpperCase().includes("DİKKAT") || text.toUpperCase().includes("UYARI");
     const timeSinceLastSpeak = now - lastSpeakTimeRef.current;
 
-    // ACİL DURUMSA: Hemen kes ve konuş (0ms)
-    // NORMAL DURUMSA: En az 2.5 saniye bekle (Cümle bitsin)
+    // ACİL DURUMSA: Her şeyi hemen kes ve konuş
+    if (isUrgent) {
+      window.speechSynthesis.cancel();
+      lastSpeakTimeRef.current = now; // Acil konuşma başlangıcını kaydet
+      setTimeout(() => startSpeech(text), 10);
+      return;
+    }
+
+    // NORMAL DURUMSA: Eğer şu an konuşuyorsa ve üzerinden 3 saniye geçmediyse darlama (kesme)
     if (window.speechSynthesis.speaking) {
-      if (isUrgent || timeSinceLastSpeak > 2500) {
-        window.speechSynthesis.cancel();
-        setTimeout(() => startSpeech(text), 10);
-      } else {
-        // Hali hazırda konuşuyor ve acil değil -> Şimdilik sus, sıradaki kareyi bekle.
-        // Bu sayede "Masa va..." diye sözü kesilmez.
+      if (timeSinceLastSpeak < 3000) {
+        // Hali hazırda konuşuyor -> Bu metni atla, bir sonraki analiz döngüsünü bekle.
         return;
       }
-    } else {
-      startSpeech(text);
+      // 3 saniyeden fazla olmuşsa (muhtemelen bitmiştir veya takılmıştır), temizle ve yeniye geç
+      window.speechSynthesis.cancel();
     }
+
+    lastSpeakTimeRef.current = now; // Yeni konuşma başlangıcını kaydet
+    startSpeech(text);
   }, [isMuted]);
 
   const startSpeech = (text: string) => {
@@ -302,7 +308,11 @@ const App: React.FC = () => {
 
     try {
       const video = cameraRef.current?.getVideoElement();
-      if (!video) return;
+      if (!video) {
+        console.error("📹 Kamera bulunamadı!");
+        setAiText("Hata: Kamera bulunamadı.");
+        return;
+      }
 
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
@@ -314,27 +324,26 @@ const App: React.FC = () => {
 
         if (base64Image) {
           let result;
-          const orKey = localStorage.getItem('OPENROUTER_API_KEY') || import.meta.env.VITE_OPENROUTER_API_KEY;
+          // API Anahtarı Önceliği: 1. ENV, 2. LocalStorage
+          const envKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+          const localKey = localStorage.getItem('OPENROUTER_API_KEY');
+          const orKey = envKey || localKey;
 
-          // DEBUG: Hangi key kullanılıyor?
-          console.log("🔑 OpenRouter Key:", orKey ? `${orKey.substring(0, 15)}...` : "YOK!");
-          console.log("🔑 Env Key:", import.meta.env.VITE_OPENROUTER_API_KEY ? "VAR" : "YOK");
+          console.log("🔑 API Anahtarı Kaynağı:", envKey ? "Sistem (Env)" : (localKey ? "Tarayıcı (Local)" : "BULUNAMADI"));
 
           if (orKey) {
-            // QWEN VISION (OpenRouter)
-            console.log("🔵 Qwen Analizi Başlıyor... Soru:", customQuery || "Yok");
+            console.log("🔵 Analiz Başlıyor... Soru:", customQuery || "Yok");
             try {
-              // Custom query varsa ilet
               result = await analyzeImageWithQwen(base64Image, targetMode, customQuery);
               if (result) {
-                console.log("✅ Qwen başarılı!");
+                console.warn("✅ Qwen başarılı!");
               } else {
                 console.warn("⚠️ Qwen boş döndü.");
+                setAiText("Hata: Model boş yanıt döndü.");
               }
             } catch (e: any) {
-              console.warn("❌ Qwen Tamamen Başarısız:", e.message);
-              // Gemini YOK. Hata varsa hata kalsın.
-              setAiText("Bağlantı hatası: Modeller yanıt vermedi.");
+              console.error("❌ Qwen Tamamen Başarısız:", e);
+              setAiText(`Bağlantı Hatası: ${e.message}`);
             }
           } else {
             setAiText("API Anahtarı bulunamadı.");
