@@ -599,6 +599,14 @@ const App: React.FC = () => {
         "para var mı", "kaç kuruş", "para", "lira", "tl"
       ];
 
+      // EŞYA BULMA SORULARI (YENİ)
+      const finderQuestions = [
+        "anahtar nerede", "anahtarımı bul", "anahtar var mı", "anahtar",
+        "cüzdan nerede", "cüzdanımı bul", "cüzdan var mı", "cüzdan",
+        "telefon nerede", "telefonumu bul", "telefon var mı", "telefon",
+        "kapı nerede", "kapıyı bul", "çıkış nerede", "çıkış"
+      ];
+
       // === MOD DEĞİŞTİRME KOMUTLARI (ESNEKLEŞTİRİLMİŞ) ===
       const words = transcript.split(/\s+/); // Kelimelere ayır
 
@@ -676,6 +684,24 @@ const App: React.FC = () => {
         3. Sonuç: "1 adet 50 TL, 2 adet 10 TL var. Toplam 70 TL." gibi söyle.
         4. Para yoksa "Para göremiyorum" de.`;
         setTimeout(() => performAnalysis(AppMode.SCAN, moneyPrompt), 300);
+      }
+
+      // === EŞYA BULMA SORULARI (YENİ) ===
+      else if (finderQuestions.some(q => transcript.includes(q)) || fuzzyMatch(transcript, finderQuestions)) {
+        console.log("🕵️ Eşya bulma sorusu algılandı");
+        if (modeRef.current === AppMode.IDLE) {
+          setMode(AppMode.SCAN);
+        }
+
+        let targetObject = "nesneyi";
+        if (transcript.includes("anahtar")) targetObject = "anahtarı";
+        else if (transcript.includes("cüzdan")) targetObject = "cüzdanı";
+        else if (transcript.includes("telefon")) targetObject = "telefonu";
+        else if (transcript.includes("kapı") || transcript.includes("çıkış")) targetObject = "kapıyı";
+
+        speak(`${targetObject} arıyorum`);
+        const findPrompt = `Görüntüde ${targetObject} var mı? Varsa yerini (sağda, solda, masada) söyle. Yoksa 'Göremiyorum' de.`;
+        setTimeout(() => performAnalysis(AppMode.SCAN, findPrompt), 300);
       }
 
       // === OKUMA SORULARI ===
