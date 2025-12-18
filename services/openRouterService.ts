@@ -56,12 +56,14 @@ GÖREV: En hızlı çıkış yolunu bul.`;
 };
 
 const makeRequest = async (apiKey: string, model: string, systemPrompt: string, userMessage: string, imageUrl: string) => {
+    const siteUrl = typeof window !== 'undefined' ? window.location.origin : "https://localhost:3000";
+
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${apiKey}`,
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://localhost:3000",
+            "HTTP-Referer": siteUrl,
             "X-Title": "Third Eye App"
         },
         body: JSON.stringify({
