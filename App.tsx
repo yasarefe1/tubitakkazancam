@@ -5,7 +5,7 @@ import CockpitLayer from './components/CockpitLayer';
 import BoundingBoxLayer from './components/BoundingBoxLayer';
 import SettingsModal from './components/SettingsModal';
 import { AppMode, CameraHandle, BoundingBox } from './types';
-import { analyzeImage } from './services/geminiService';
+import { analyzeImageWithGemini } from './services/geminiService';
 import { analyzeImageWithQwen } from './services/openRouterService';
 // import { analyzeImageWithGroq } from './services/groqService';
 
@@ -335,19 +335,40 @@ const App: React.FC = () => {
           if (orKey) {
             console.log("🔵 Analiz Başlıyor... Soru:", customQuery || "Yok");
             try {
+              // Önce Qwen'i dene
               result = await analyzeImageWithQwen(base64Image, targetMode, customQuery);
               if (result) {
                 console.warn("✅ Qwen başarılı!");
-              } else {
-                console.warn("⚠️ Qwen boş döndü.");
-                setAiText("Hata: Model boş yanıt döndü.");
               }
             } catch (e: any) {
-              console.error("❌ Qwen Tamamen Başarısız:", e);
-              setAiText(`Bağlantı Hatası: ${e.message}`);
+              console.error("❌ Qwen Başarısız, Gemini deneniyor...", e.message);
+
+              // Qwen patlarsa Gemini'yi dene (Eğer anahtarı varsa)
+              const geminiKey = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('GEMINI_API_KEY');
+              if (geminiKey) {
+                try {
+                  result = await analyzeImageWithGemini(base64Image, targetMode, customQuery);
+                  console.warn("✅ Gemini yedek olarak devreye girdi!");
+                } catch (gemError: any) {
+                  console.error("❌ Gemini de başarısız:", gemError.message);
+                  setAiText(`Sistem Hatası: Modeller yanıt vermiyor.`);
+                }
+              } else {
+                setAiText(`Bağlantı Hatası: ${e.message}. Alternatif olarak Gemini anahtarı girin.`);
+              }
             }
           } else {
-            setAiText("API Anahtarı bulunamadı.");
+            // Hiç anahtar yoksa Gemini'yi tek başına dene
+            const geminiKey = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('GEMINI_API_KEY');
+            if (geminiKey) {
+              try {
+                result = await analyzeImageWithGemini(base64Image, targetMode, customQuery);
+              } catch (e: any) {
+                setAiText(`Hata: ${e.message}`);
+              }
+            } else {
+              setAiText("API Anahtarı bulunamadı.");
+            }
           }
 
           if (modeRef.current === targetMode && result) {
