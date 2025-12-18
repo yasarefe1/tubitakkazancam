@@ -86,7 +86,7 @@ const makeRequest = async (apiKey: string, model: string, systemPrompt: string, 
                     ]
                 }
             ],
-            max_tokens: 300,
+            max_tokens: 1000,
             temperature: 0.1,
             response_format: { type: "json_object" }
         })

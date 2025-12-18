@@ -88,7 +88,7 @@ export const analyzeImage = async (base64Image: string, mode: AppMode): Promise<
             ]
           }],
           generationConfig: {
-            maxOutputTokens: 300,
+            maxOutputTokens: 1000,
             temperature: 0.1,
             responseMimeType: "application/json"
           }
