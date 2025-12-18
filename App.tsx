@@ -362,10 +362,12 @@ const App: React.FC = () => {
       // 1. Hemen bir analiz yap
       performAnalysis(mode);
 
-      // 2. Sonra 4 saniyede bir tekrarla (Agresif Mod)
+      // 2. Sonra 2.5 saniyede bir tekrarla (Gerçek Zamanlıya Yakın)
       intervalId = setInterval(() => {
-        performAnalysis(mode);
-      }, 4000);
+        if (!isProcessing) { // Önceki işlem bitmeden yenisine başlama
+          performAnalysis(mode);
+        }
+      }, 2500);
     } else {
       setAiText("Mod seçin.");
       setBoxes([]);
