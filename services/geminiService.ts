@@ -48,17 +48,16 @@ GÖREV: Gördüğün tüm metinleri akıcı bir şekilde oku.`;
 
   if (mode === AppMode.NAVIGATE) {
     return `${base}
-MOD: YOL TARİFİ (PATHFINDER MODU)
-GÖREV: Kör kullanıcının gözü ol ve onu HEDEFE (Kapı, Koridor, Açık Alan) götür.
+MOD: YOL TARİFİ (REAKTİF NAVİGASYON)
+GÖREV: Kullanıcı yürüyor. Önünü kontrol et ve anlık tepki ver.
+DURUM 1: YOL AÇIKSA -> "Yolun açık, düz devam et." veya "Koridor boyunca ilerle." (Kısa ve güven verici ol).
+DURUM 2: ENGEL VARSA -> "DUR! Önünde koltuk var, sağdan geç." veya "Dikkat, yerde kablo var, üstünden atla."
+DURUM 3: HEDEF VARSA -> "Saat 12 yönünde kapı var, oraya git."
+
 KURALLAR:
-1. HEDEF BELİRLE: Görüntüde bir kapı veya gidilebilecek açık bir yol bul.
-2. SAAT YÖNÜ VER: "Saat 12 yönünde kapı var", "Saat 2 yönüne dön" gibi kesin yön ver.
-3. ADIM ADIM YÖNET: "3 adım düz git", "Hafif sağa dön" gibi anlık komutlar ver.
-4. ENGEL UYARISI: Eğer önü kapalıysa "DUR" de ve alternatif yön söyle.
-FORMAT: "[HEDEF] -> [YÖN] -> [KOMUT]"
-ÖRNEK:
-- "Karşıda Kapı var -> Saat 12 yönünde -> Düz ilerle."
-- "Önünde Koltuk engeli -> Saat 3 yönüne dön -> Boşluktan geç."`;
+1. Asla "Görüntüde..." deme. Direkt konuş.
+2. Cümlelerin kısa olsun ama robot gibi olmasın. (Özne-Yüklem kullan).
+3. Mesafeyi tahminen söyle ("2 adım sonra", "Hemen önünde").`;
   }
 
   if (mode === AppMode.EMERGENCY) {
