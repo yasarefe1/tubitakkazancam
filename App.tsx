@@ -329,9 +329,14 @@ const App: React.FC = () => {
           }
 
           if (modeRef.current === targetMode && result) {
-            setAiText(result.text);
+            // DUPLIKASYON KONTROLÜ: Eğer metin %100 aynıysa tekrar konuşma (kullanıcıyı darlama)
+            // Ama kutuları güncelle ki ekranda görünsün.
             setBoxes(result.boxes);
-            speak(result.text);
+
+            if (result.text !== aiText) {
+              setAiText(result.text);
+              speak(result.text);
+            }
           }
         }
       }
@@ -344,7 +349,7 @@ const App: React.FC = () => {
     }
   };
 
-  // --- OTOMATİK MOD: 20 saniyede bir analiz (dakikada 3 istek = kota güvenli) ---
+  // --- OTOMATİK MOD: 4 saniyede bir analiz (Kullanıcı İsteği) ---
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
 
@@ -357,10 +362,10 @@ const App: React.FC = () => {
       // 1. Hemen bir analiz yap
       performAnalysis(mode);
 
-      // 2. Sonra 12 saniyede bir tekrarla (Kota güvenli)
+      // 2. Sonra 4 saniyede bir tekrarla (Agresif Mod)
       intervalId = setInterval(() => {
         performAnalysis(mode);
-      }, 12000);
+      }, 4000);
     } else {
       setAiText("Mod seçin.");
       setBoxes([]);
