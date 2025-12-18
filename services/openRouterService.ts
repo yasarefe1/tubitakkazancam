@@ -41,17 +41,17 @@ GÖREV: Gördüğün tüm metinleri akıcı bir şekilde oku.`;
 
     if (mode === AppMode.NAVIGATE) {
         return `${base}
-MOD: YOL TARİFİ (KESİN KOMUT MODU)
-GÖREV: Kör birini yürütüyorsun. BETİMLEME YAPMA! Sadece ne olduğunu ve nasıl geçeceğini söyle.
-FORMAT: "[NESNE] -> [EYLEM]"
-ÖRNEK:
-- "Önünde masa var. Sağdan geç."
-- "Yerde kablo var. Üzerinden atla."
-- "Koridor boş. Düz ilerle."
-- "Kapı kapalı. Kolu çevir."
+MOD: YOL TARİFİ (PATHFINDER MODU)
+GÖREV: Kör kullanıcının gözü ol ve onu HEDEFE (Kapı, Koridor, Açık Alan) götür.
 KURALLAR:
-1. Sadece net komut ver.
-2. Gereksiz kelime kullanma.`;
+1. HEDEF BELİRLE: Görüntüde bir kapı veya gidilebilecek açık bir yol bul.
+2. SAAT YÖNÜ VER: "Saat 12 yönünde kapı var", "Saat 2 yönüne dön" gibi kesin yön ver.
+3. ADIM ADIM YÖNET: "3 adım düz git", "Hafif sağa dön" gibi anlık komutlar ver.
+4. ENGEL UYARISI: Eğer önü kapalıysa "DUR" de ve alternatif yön söyle.
+FORMAT: "[HEDEF] -> [YÖN] -> [KOMUT]"
+ÖRNEK:
+- "Karşıda Kapı var -> Saat 12 yönünde -> Düz ilerle."
+- "Önünde Koltuk engeli -> Saat 3 yönüne dön -> Boşluktan geç."`;
     }
 
     if (mode === AppMode.EMERGENCY) {
