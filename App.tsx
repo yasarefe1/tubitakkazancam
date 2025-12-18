@@ -243,7 +243,7 @@ const App: React.FC = () => {
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
       // Kısa bir gecikme ekle ki yeni konuşma başlayabilsin
-      setTimeout(() => startSpeech(text), 100);
+      setTimeout(() => startSpeech(text), 10);
     } else {
       startSpeech(text);
     }
@@ -270,7 +270,7 @@ const App: React.FC = () => {
     }
 
     utterance.lang = 'tr-TR';
-    utterance.rate = 1.2; // SERİ VE HIZLI (TÜBİTAK İÇİN İDEAL)
+    utterance.rate = 1.3; // DAHA DA SERİ (CANLI GİBİ)
     utterance.pitch = 1.0; // DOĞAL TON
     utterance.volume = 1.0;
 
@@ -360,9 +360,9 @@ const App: React.FC = () => {
       await performAnalysis(mode);
 
       // 2. Biter bitmez (veya hata alsa bile) tekrarla
-      // Ama biraz bekle (500ms) ki cihaz ısınmasın
+      // Ama biraz bekle (10ms) ki UI donmasın ama anlık olsun
       if (isActive && mode !== AppMode.IDLE) {
-        setTimeout(startLoop, 500);
+        setTimeout(startLoop, 10);
       }
     };
 
