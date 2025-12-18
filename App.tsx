@@ -326,17 +326,18 @@ const App: React.FC = () => {
             try {
               // Custom query varsa ilet
               result = await analyzeImageWithQwen(base64Image, targetMode, customQuery);
-              console.log("✅ Qwen başarılı!");
+              if (result) {
+                console.log("✅ Qwen başarılı!");
+              } else {
+                console.warn("⚠️ Qwen boş döndü.");
+              }
             } catch (e: any) {
-              console.warn("❌ Qwen Hatası, Gemini'ye geçiliyor:", e.message);
-              // Gemini fallback
-              console.log("🟢 Gemini'ye geçiliyor...");
-              result = await analyzeImage(base64Image, targetMode);
+              console.warn("❌ Qwen Tamamen Başarısız:", e.message);
+              // Gemini YOK. Hata varsa hata kalsın.
+              setAiText("Bağlantı hatası: Modeller yanıt vermedi.");
             }
           } else {
-            // GEMINI VISION (Sadece Gemini Key varsa veya varsayılan)
-            console.log("🟢 Gemini kullanılıyor (OpenRouter key yok)...");
-            result = await analyzeImage(base64Image, targetMode);
+            setAiText("API Anahtarı bulunamadı.");
           }
 
           if (modeRef.current === targetMode && result) {

@@ -147,16 +147,5 @@ export const analyzeImageWithQwen = async (base64Image: string, mode: AppMode, c
         }
     }
 
-    // 3. DENEME: LLAMA 3.2 VISION (Key 3)
-    if (keys.key3) {
-        try {
-            console.log("🟣 3. Deneme: Llama 3.2 Vision...");
-            // DeepSeek görsele bakamaz, Llama Vision bakar!
-            return await makeRequest(keys.key3, "meta-llama/llama-3.2-11b-vision-instruct:free", systemPrompt, userMessage, imageUrl);
-        } catch (error: any) {
-            console.warn("❌ Llama Vision başarısız:", error.message);
-        }
-    }
-
-    throw new Error("Tüm yapay zeka modelleri başarısız oldu. İnternet bağlantını kontrol et veya daha sonra tekrar dene.");
+    throw new Error("Tüm Qwen modelleri başarısız oldu. İnternet bağlantını kontrol et veya daha sonra tekrar dene.");
 };
