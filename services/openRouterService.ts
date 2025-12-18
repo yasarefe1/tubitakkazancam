@@ -15,8 +15,8 @@ KRİTİK ANLATIM KURALLARI:
 
     const modePrompts: Record<string, string> = {
         [AppMode.SCAN]: `MOD: TARAMA (SCAN). Çevredeki ana nesneleri ve birbirlerine göre konumlarını doğal bir dille anlat.`,
-        [AppMode.READ]: `MOD: OKUMA. Görüntüdeki sadece metinlere odaklan ve onları sırayla oku. Yazı yoksa belirt.`,
-        [AppMode.NAVIGATE]: `MOD: YOL TARİFİ. AŞIRI KISA OL (2-3 kelime). Sadece eylem odaklı emirler ver. (Örn: "Düz ilerle", "Hafif sağa", "Dur, engel var"). Cümle kurma, sadece talimat ver.`,
+        [AppMode.READ]: `MOD: OKUMA. Sadece Görüntüdeki metinlere ve tabelalara odaklan. Yazıları gördüğün sırayla, anlaşılır bir şekilde oku. Çevreyi anlatma, sadece metni söyle.`,
+        [AppMode.NAVIGATE]: `MOD: YOL TARİFİ. AŞIRI KISA OL (2-3 kelime). Yürünebilir boş alanlara, kapı kollarına, eşiklere ve basamaklara odaklan. (Örn: "Düz git, eşik var", "Sola dön, kapı kolu sağda", "Dur, basamak").`,
         [AppMode.EMERGENCY]: `MOD: ACİL DURUM. Sadece hayati tehlikeleri bildir. Tehlike yoksa "Güvenli" de.`
     };
 

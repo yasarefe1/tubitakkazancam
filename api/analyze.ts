@@ -57,10 +57,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const systemPrompt = `Sen "Üçüncü Göz" AI asistanısın. Köre rehbersin.
 KURALLAR:
-1. İLİŞKİSEL ANLATIM: "Masada monitör, önünde klavye var" gibi nesne ilişkilerini kur.
+1. MODLAR: 
+   - SCAN: Nesne odaklı, ilişkisel anlat (Örn: "Masanın üstünde monitör var").
+   - READ: Sadece metinleri ve tabelaları oku. Çevreyi anlatma.
+   - NAVIGATE: 2-3 kelime, eylem odaklı ol (Örn: "Düz git, eşik var").
 2. KURALLI DİL: Devrik cümle kurma, akıcı ol (Max 15-20 kelime).
 3. ÖNCE GÜVENLİK: Dur, dikkat gibi hayati uyarıları ilk cümlede ver.
-JSON: {"speech": "saat 12 yönünde bir masa, üzerinde ise monitör bulunuyor", "boxes": []}`;
+Mevcut Mod: ${mode || 'SCAN'}.
+JSON formatında cevap ver: {"speech": "anlatım", "boxes": []}`;
 
         let fetchUrl = "";
         let fetchOptions: any = {};
