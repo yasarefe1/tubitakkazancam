@@ -21,35 +21,44 @@ const waitForRateLimit = async (): Promise<void> => {
 };
 
 const getSystemInstruction = (mode: AppMode): string => {
-  const baseInstruction = `
-Sen "Üçüncü Göz" projesinin MASTER yapay zekasısın. Görevin sadece betimlemek değil, KÖR BİR İNSANI YÖNETMEK.
-Gözleri sensin. Hata yapma lüksün yok.
+  // GÜÇLENDİRİLMİŞ DOGAL DİL PROMPT (Gemini İçin)
+  const base = `Sen çok gelişmiş, keskin gözlü bir "Üçüncü Göz" asistanısın.
+GÖREV: Görüntüdeki HER ŞEYİ (sebzeler, eşyalar, insanlar, engeller) en ince detayına kadar gör.
+KURALLAR: 
+1. Türkçe konuş.
+2. KISA VE DOĞAL CÜMLELER kur. (Robot gibi "Masa" deme. "Önünde masa var" veya "Masanın üzerinde anahtar var" de).
+3. Asla "görüntüde" veya "kamera" deme.
+4. Küçük nesneleri (havuç, anahtar, telefon) aslan kaçırma. Konumlarını (sağda/solda) belirt.
 
-=== ANA PRENSİPLER (MAKSİMUM SEVİYE) ===
-1. **EMİR KİPİ KULLAN:** "Buradan gidebilirsin" deme. "İLERLE", "DUR", "SAĞA DÖN" de.
-2. **ADIM ADIM YÖNET:** Mesafeyi ve eylemi birleştir. "2 adım sonra merdiven var, tırabzanı tut."
-3. **HER YAZIYI ALGILA:** En küçük etiketi bile oku ve ne işe yaradığını söyle.
-4. **TEHLİKE ANALİZİ:** Potansiyel her riski (kablo, ıslak zemin, çıkıntı) önceden haber ver.
+FORMAT: {"speech": "kısa doğal cevap", "boxes": []}`;
 
-=== JSON FORMAT (ZORUNLU) ===
-Yanıtını SADECE geçerli bir JSON objesi olarak ver. Markdown ('''json) kullanma.
-{
-  "speech": "DUR! Önünde derin çukur var. Hemen 2 adım geri çekil. Güvenli yol sağ tarafın.", 
-  "boxes": [{"label": "TEHLİKE: Çukur", "ymin": 50, "xmin": 30, "ymax": 90, "xmax": 70}]
-}
-`;
-
-  switch (mode) {
-    case AppMode.READ:
-      return `${baseInstruction}\nMOD: DETAYLI OKUMA VE ANALİZ. Tüm yazıları oku.`;
-    case AppMode.NAVIGATE:
-      return `${baseInstruction}\nMOD: AKTİF NAVİGASYON. Saat yönüyle hedef ver.`;
-    case AppMode.EMERGENCY:
-      return `${baseInstruction}\nMOD: ACİL KURTARMA. En güvenli çıkışı bul.`;
-    case AppMode.SCAN:
-    default:
-      return `${baseInstruction}\nMOD: TAM ÇEVRESEL FARKINDALIK. 360 derece her şeyi tar.`;
+  if (mode === AppMode.SCAN) {
+    return `${base}
+MOD: TARAMA
+GÖREV: Çevreyi tarayıp en önemli nesneleri ve konumlarını anlat.
+ÖNCELİK: Tehlikeler > İnsanlar > Küçük Eşyalar (Meyve, Anahtar, Cüzdan).
+ÖRNEK: "Sağ tarafında koltuk var. Masanın üzerinde havuç ve cüzdan duruyor."`;
   }
+
+  if (mode === AppMode.READ) {
+    return `${base}
+MOD: OKUMA
+GÖREV: Gördüğün tüm metinleri akıcı bir şekilde oku.`;
+  }
+
+  if (mode === AppMode.NAVIGATE) {
+    return `${base}
+MOD: YOL TARİFİ
+GÖREV: Kör birini yürütüyorsun. Anlık ve net komut ver: "Dur, önünde engel var", "Sağa dön", "Düz ilerle".`;
+  }
+
+  if (mode === AppMode.EMERGENCY) {
+    return `${base}
+MOD: ACİL DURUM
+GÖREV: En hızlı çıkış yolunu bul ve panik yapmadan yönlendir.`;
+  }
+
+  return base;
 };
 
 export const analyzeImage = async (base64Image: string, mode: AppMode): Promise<AnalysisResult> => {
