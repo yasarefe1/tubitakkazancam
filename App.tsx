@@ -283,339 +283,361 @@ const App: React.FC = () => {
     window.speechSynthesis.speak(utterance);
   };
 
-  const performAnalysis = async (targetMode: AppMode) => {
+  const performAnalysis = async (targetMode: AppMode, customQuery?: string) => {
     if (isProcessingRef.current) return;
 
     setIsProcessing(true);
+    setAiText(customQuery ? "Soru analizi..." : "Analiz ediliyor...");
 
     try {
-      const base64Image = cameraRef.current?.takePhoto();
+      const video = cameraRef.current?.getVideoElement();
+      if (!video) return;
 
-      if (base64Image) {
-        let result;
-        const orKey = localStorage.getItem('OPENROUTER_API_KEY') || import.meta.env.VITE_OPENROUTER_API_KEY;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-        if (orKey) {
-          // QWEN VISION (OpenRouter)
-          console.log("🔵 OpenRouter (Qwen) kullanılıyor...");
-          try {
-            result = await analyzeImageWithQwen(base64Image, targetMode);
-            console.log("✅ Qwen başarılı!");
-          } catch (e: any) {
-            console.warn("❌ Qwen Hatası, Gemini'ye geçiliyor:", e.message);
-            // Hata sebebini kullanıcıya söyleyelim ki bilsin
-            if (e.message && (e.message.includes("401") || e.message.includes("402"))) {
-              speak("Open Router anahtarı hatalı, Gemini'ye geçiyorum.");
+        if (base64Image) {
+          let result;
+          const orKey = localStorage.getItem('OPENROUTER_API_KEY') || import.meta.env.VITE_OPENROUTER_API_KEY;
+
+          if (orKey) {
+            // QWEN VISION (OpenRouter)
+            console.log("🔵 Qwen Analizi Başlıyor... Soru:", customQuery || "Yok");
+            try {
+              // Custom query varsa ilet
+              result = await analyzeImageWithQwen(base64Image, targetMode, customQuery);
+              console.log("✅ Qwen başarılı!");
+            } catch (e: any) {
+              try {
+                result = await analyzeImageWithQwen(base64Image, targetMode);
+                console.log("✅ Qwen başarılı!");
+              } catch (e: any) {
+                console.warn("❌ Qwen Hatası, Gemini'ye geçiliyor:", e.message);
+                // Hata sebebini kullanıcıya söyleyelim ki bilsin
+                if (e.message && (e.message.includes("401") || e.message.includes("402"))) {
+                  speak("Open Router anahtarı hatalı, Gemini'ye geçiyorum.");
+                } else {
+                  // Diğer hataları logla ama kullanıcıyı boğma
+                  console.log("Qwen başarısız oldu.");
+                }
+                console.log("🟢 Gemini'ye geçiliyor...");
+                result = await analyzeImage(base64Image, targetMode);
+              }
             } else {
-              // Diğer hataları logla ama kullanıcıyı boğma
-              console.log("Qwen başarısız oldu.");
+              // GEMINI VISION (Sadece Gemini Key varsa veya varsayılan)
+              console.log("🟢 Gemini kullanılıyor (OpenRouter key yok)...");
+              result = await analyzeImage(base64Image, targetMode);
             }
-            console.log("🟢 Gemini'ye geçiliyor...");
-            result = await analyzeImage(base64Image, targetMode);
+
+            if (modeRef.current === targetMode && result) {
+              setAiText(result.text);
+              setBoxes(result.boxes);
+              speak(result.text);
+            }
           }
+        } catch (error) {
+          console.error(error);
+        } finally {
+          if (modeRef.current === targetMode) {
+            setIsProcessing(false);
+          }
+        }
+      };
+
+      // --- OTOMATİK MOD: 20 saniyede bir analiz (dakikada 3 istek = kota güvenli) ---
+      useEffect(() => {
+        let intervalId: ReturnType<typeof setInterval>;
+
+        if (mode !== AppMode.IDLE) {
+          // Clear previous boxes when starting new mode
+          setBoxes([]);
+          setAiText("Analiz ediliyor...");
+          manualTorchOverrideRef.current = false;
+
+          // 1. Hemen bir analiz yap
+          performAnalysis(mode);
+
+          // 2. Sonra 12 saniyede bir tekrarla (Kota güvenli)
+          intervalId = setInterval(() => {
+            performAnalysis(mode);
+          }, 12000);
         } else {
-          // GEMINI VISION (Sadece Gemini Key varsa veya varsayılan)
-          console.log("🟢 Gemini kullanılıyor (OpenRouter key yok)...");
-          result = await analyzeImage(base64Image, targetMode);
+          setAiText("Mod seçin.");
+          setBoxes([]);
+          stopCurrentAudio();
+          setIsProcessing(false);
+          if (isTorchOn) {
+            toggleTorch(false);
+          }
         }
 
-        if (modeRef.current === targetMode && result) {
-          setAiText(result.text);
-          setBoxes(result.boxes);
-          speak(result.text);
+        return () => {
+          if (intervalId) clearInterval(intervalId);
+        };
+      }, [mode]);
+
+
+      const handleModeSelect = (selectedMode: AppMode) => {
+        playSound('click');
+        if (navigator.vibrate) navigator.vibrate(50);
+
+        if (selectedMode === mode) {
+          setMode(AppMode.IDLE);
+        } else {
+          setMode(selectedMode);
+
+          // Acil Durum Özel Mantığı
+          if (selectedMode === AppMode.EMERGENCY) {
+            handleEmergencyAction();
+          }
         }
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      if (modeRef.current === targetMode) {
-        setIsProcessing(false);
-      }
-    }
-  };
+      };
 
-  // --- OTOMATİK MOD: 20 saniyede bir analiz (dakikada 3 istek = kota güvenli) ---
-  useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval>;
+      const handleEmergencyAction = () => {
+        speak("Acil durum modu aktif. Konumunuz alınıyor.");
 
-    if (mode !== AppMode.IDLE) {
-      // Clear previous boxes when starting new mode
-      setBoxes([]);
-      setAiText("Analiz ediliyor...");
-      manualTorchOverrideRef.current = false;
+        if ("geolocation" in navigator) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const { latitude, longitude } = position.coords;
+              const mapUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+              const emerNumber = localStorage.getItem('EMERGENCY_NUMBER') || "";
 
-      // 1. Hemen bir analiz yap
-      performAnalysis(mode);
+              if (emerNumber) {
+                speak("Konumunuz belirlendi. WhatsApp ile göndermek için ekrandaki kırmızı butona tekrar basın veya bu mesajı bekleyin.");
+                // WhatsApp linkini oluştur ve sakla (belki bir ref veya state ile)
+                const waUrl = `https://wa.me/${emerNumber.replace(/\D/g, '')}?text=Acil%20durum!%20Konumum:%20${encodeURIComponent(mapUrl)}`;
 
-      // 2. Sonra 12 saniyede bir tekrarla (Kota güvenli)
-      intervalId = setInterval(() => {
-        performAnalysis(mode);
-      }, 12000);
-    } else {
-      setAiText("Mod seçin.");
-      setBoxes([]);
-      stopCurrentAudio();
-      setIsProcessing(false);
-      if (isTorchOn) {
-        toggleTorch(false);
-      }
-    }
+                // Otomatik yönlendirme yerine kullanıcıya seçenek sunmak daha güvenli ama 
+                // kör kullanıcı için doğrudan açmak daha pratik olabilir.
+                setTimeout(() => {
+                  window.open(waUrl, '_blank');
+                }, 3000);
+              } else {
+                speak("Konumunuz bulundu fakat kayıtlı acil durum numarası yok. Lütfen ayarlardan numara ekleyin.");
+              }
+            },
+            (error) => {
+              console.error("Konum hatası:", error);
+              speak("Konumunuz alınamadı. Lütfen konum iznini kontrol edin.");
+            }
+          );
+        } else {
+          speak("Cihazınız konum özelliğini desteklemiyor.");
+        }
+      };
 
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [mode]);
+      const toggleTorch = async (forceState?: boolean) => {
+        const newState = forceState !== undefined ? forceState : !isTorchOn;
 
-
-  const handleModeSelect = (selectedMode: AppMode) => {
-    playSound('click');
-    if (navigator.vibrate) navigator.vibrate(50);
-
-    if (selectedMode === mode) {
-      setMode(AppMode.IDLE);
-    } else {
-      setMode(selectedMode);
-
-      // Acil Durum Özel Mantığı
-      if (selectedMode === AppMode.EMERGENCY) {
-        handleEmergencyAction();
-      }
-    }
-  };
-
-  const handleEmergencyAction = () => {
-    speak("Acil durum modu aktif. Konumunuz alınıyor.");
-
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          const mapUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
-          const emerNumber = localStorage.getItem('EMERGENCY_NUMBER') || "";
-
-          if (emerNumber) {
-            speak("Konumunuz belirlendi. WhatsApp ile göndermek için ekrandaki kırmızı butona tekrar basın veya bu mesajı bekleyin.");
-            // WhatsApp linkini oluştur ve sakla (belki bir ref veya state ile)
-            const waUrl = `https://wa.me/${emerNumber.replace(/\D/g, '')}?text=Acil%20durum!%20Konumum:%20${encodeURIComponent(mapUrl)}`;
-
-            // Otomatik yönlendirme yerine kullanıcıya seçenek sunmak daha güvenli ama 
-            // kör kullanıcı için doğrudan açmak daha pratik olabilir.
-            setTimeout(() => {
-              window.open(waUrl, '_blank');
-            }, 3000);
+        if (forceState === undefined) {
+          playSound('click');
+          if (newState === false) {
+            manualTorchOverrideRef.current = true;
           } else {
-            speak("Konumunuz bulundu fakat kayıtlı acil durum numarası yok. Lütfen ayarlardan numara ekleyin.");
+            manualTorchOverrideRef.current = false;
           }
-        },
-        (error) => {
-          console.error("Konum hatası:", error);
-          speak("Konumunuz alınamadı. Lütfen konum iznini kontrol edin.");
         }
-      );
-    } else {
-      speak("Cihazınız konum özelliğini desteklemiyor.");
-    }
-  };
 
-  const toggleTorch = async (forceState?: boolean) => {
-    const newState = forceState !== undefined ? forceState : !isTorchOn;
+        setIsTorchOn(newState);
+        if (cameraRef.current) {
+          await cameraRef.current.toggleTorch(newState);
+        }
+      };
 
-    if (forceState === undefined) {
-      playSound('click');
-      if (newState === false) {
-        manualTorchOverrideRef.current = true;
-      } else {
-        manualTorchOverrideRef.current = false;
-      }
-    }
-
-    setIsTorchOn(newState);
-    if (cameraRef.current) {
-      await cameraRef.current.toggleTorch(newState);
-    }
-  };
-
-  const toggleMute = () => {
-    if (isMuted) {
-      setIsMuted(false);
-      setTimeout(() => playSound('click'), 50);
-    } else {
-      playSound('click');
-      stopCurrentAudio();
-      setIsMuted(true);
-    }
-  };
-
-  const handleBoxClick = async (box: BoundingBox) => {
-    playSound('click');
-
-    // Zoom mantığı kaldırıldı (Kullanıcı isteği)
-    /*
-    const newZoom = zoomLevel > 1.2 ? 1.0 : 2.0;
-    setZoomLevel(newZoom);
-    setBoxes([]);
-    if (cameraRef.current) {
-      await cameraRef.current.setZoom(newZoom);
-    }
-    */
-
-    // Sadece nesnenin adını söyle
-    speak(`${box.label}`);
-
-    // Force analysis after a short delay for camera to settle
-    setTimeout(() => {
-      if (modeRef.current !== AppMode.IDLE) {
-        performAnalysis(modeRef.current);
-      }
-    }, 800);
-  };
-
-  const handleBrightnessCheck = (brightness: number) => {
-    // Flaş Histerezis Mantığı (Daha Hassas)
-    // Açma Eşiği: 100 (Hafif loşsa bile aç)
-    // Kapatma Eşiği: 180 (Bayağı aydınlıksa kapat)
-
-    if (manualTorchOverrideRef.current) return;
-
-    if (!isTorchOn && brightness < 100) {
-      toggleTorch(true);
-      speak("Karanlık, ışık açıldı.");
-    } else if (isTorchOn && brightness > 180) {
-      toggleTorch(false);
-    }
-  };
-
-  // Run once on mount
-  useEffect(() => {
-    setAiText(""); // Kullanıcı isteği: Boş başlasın ("bişi deme")
-  }, []);
-
-  // Sesli Komut Mantığı
-  const toggleListening = useCallback(() => {
-    if (isListening) {
-      if ((window as any).recognitionInstance) {
-        (window as any).recognitionInstance.stop();
-      }
-      setIsListening(false);
-      return;
-    }
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      speak("Sesli komut tarayıcınızda desteklenmiyor.");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'tr-TR';
-    recognition.continuous = false;
-    recognition.interimResults = false;
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      playSound('click');
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript.toLowerCase();
-      console.log("Sesli Komut:", transcript);
-
-      // MOD DEĞİŞTİRME
-      if (transcript.includes("oku") || transcript.includes("okuma")) {
-        handleModeSelect(AppMode.READ);
-      }
-      else if (transcript.includes("tara") || transcript.includes("tarama") || transcript.includes("çevre")) {
-        handleModeSelect(AppMode.SCAN);
-      }
-      else if (transcript.includes("yol") || transcript.includes("navigasyon") || transcript.includes("git")) {
-        handleModeSelect(AppMode.NAVIGATE);
-      }
-      else if (transcript.includes("acil") || transcript.includes("yardım")) {
-        handleModeSelect(AppMode.EMERGENCY);
-      }
-
-      // ANLIK ANALİZ
-      else if (transcript.includes("ne görüyorsun") || transcript.includes("ne var") || transcript.includes("anlat") || transcript.includes("söyle")) {
-        if (modeRef.current !== AppMode.IDLE) {
-          performAnalysis(modeRef.current);
-          speak("Analiz ediyorum");
+      const toggleMute = () => {
+        if (isMuted) {
+          setIsMuted(false);
+          setTimeout(() => playSound('click'), 50);
         } else {
-          speak("Önce bir mod seç");
+          playSound('click');
+          stopCurrentAudio();
+          setIsMuted(true);
         }
-      }
+      };
 
-      // IŞIK KONTROLÜ
-      else if (transcript.includes("ışık") && (transcript.includes("aç") || transcript.includes("yak"))) {
-        toggleTorch(true);
-        speak("Işık açıldı");
-      }
-      else if (transcript.includes("ışık") && (transcript.includes("kapat") || transcript.includes("söndür") || transcript.includes("kapa"))) {
-        toggleTorch(false);
-        speak("Işık kapatıldı");
-      }
+      const handleBoxClick = async (box: BoundingBox) => {
+        playSound('click');
 
-      // DURDURMA
-      else if (transcript.includes("dur") || transcript.includes("sus") || transcript.includes("kapat") || transcript.includes("durdur")) {
-        setMode(AppMode.IDLE);
-        stopCurrentAudio();
-        speak("Durdu");
-      }
+        // Zoom mantığı kaldırıldı (Kullanıcı isteği)
+        /*
+        const newZoom = zoomLevel > 1.2 ? 1.0 : 2.0;
+        setZoomLevel(newZoom);
+        setBoxes([]);
+        if (cameraRef.current) {
+          await cameraRef.current.setZoom(newZoom);
+        }
+        */
 
-      // ANLAŞILMADI
-      else {
-        speak("Anlaşılmadı. Tara, oku, yol veya acil de.");
-      }
+        // Sadece nesnenin adını söyle
+        speak(`${box.label}`);
+
+        // Force analysis after a short delay for camera to settle
+        setTimeout(() => {
+          if (modeRef.current !== AppMode.IDLE) {
+            performAnalysis(modeRef.current);
+          }
+        }, 800);
+      };
+
+      const handleBrightnessCheck = (brightness: number) => {
+        // Flaş Histerezis Mantığı (Daha Hassas)
+        // Açma Eşiği: 100 (Hafif loşsa bile aç)
+        // Kapatma Eşiği: 180 (Bayağı aydınlıksa kapat)
+
+        if (manualTorchOverrideRef.current) return;
+
+        if (!isTorchOn && brightness < 100) {
+          toggleTorch(true);
+          speak("Karanlık, ışık açıldı.");
+        } else if (isTorchOn && brightness > 180) {
+          toggleTorch(false);
+        }
+      };
+
+      // Run once on mount
+      useEffect(() => {
+        setAiText(""); // Kullanıcı isteği: Boş başlasın ("bişi deme")
+      }, []);
+
+      // Sesli Komut Mantığı
+      const toggleListening = useCallback(() => {
+        if (isListening) {
+          if ((window as any).recognitionInstance) {
+            (window as any).recognitionInstance.stop();
+          }
+          setIsListening(false);
+          return;
+        }
+
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          speak("Sesli komut tarayıcınızda desteklenmiyor.");
+          return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'tr-TR';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+          setIsListening(true);
+          playSound('click');
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+        };
+
+        recognition.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript.toLowerCase();
+          console.log("Sesli Komut:", transcript);
+
+          // MOD DEĞİŞTİRME
+          if (transcript.includes("oku") || transcript.includes("okuma")) {
+            handleModeSelect(AppMode.READ);
+          }
+          else if (transcript.includes("tara") || transcript.includes("tarama") || transcript.includes("çevre")) {
+            handleModeSelect(AppMode.SCAN);
+          }
+          else if (transcript.includes("yol") || transcript.includes("navigasyon") || transcript.includes("git")) {
+            handleModeSelect(AppMode.NAVIGATE);
+          }
+          else if (transcript.includes("acil") || transcript.includes("yardım")) {
+            handleModeSelect(AppMode.EMERGENCY);
+          }
+
+          // ANLIK ANALİZ
+          else if (transcript.includes("ne görüyorsun") || transcript.includes("ne var") || transcript.includes("anlat") || transcript.includes("söyle")) {
+            if (modeRef.current !== AppMode.IDLE) {
+              performAnalysis(modeRef.current);
+              speak("Analiz ediyorum");
+            } else {
+              speak("Önce bir mod seç");
+            }
+          }
+
+          // IŞIK KONTROLÜ
+          else if (transcript.includes("ışık") && (transcript.includes("aç") || transcript.includes("yak"))) {
+            toggleTorch(true);
+            speak("Işık açıldı");
+          }
+          else if (transcript.includes("ışık") && (transcript.includes("kapat") || transcript.includes("söndür") || transcript.includes("kapa"))) {
+            toggleTorch(false);
+            speak("Işık kapatıldı");
+          }
+
+          // DURDURMA
+          else if (transcript.includes("dur") || transcript.includes("sus") || transcript.includes("kapat") || transcript.includes("durdur")) {
+            setMode(AppMode.IDLE);
+            stopCurrentAudio();
+            speak("Durdu");
+          }
+
+          // ANLASILMAYAN HER SEYI SORU OLARAK KABUL ET
+          else {
+            // Eğer komut değilse, bunu bir soru olarak algıla ve analiz et
+            console.log("Soru algılandı:", transcript);
+            if (modeRef.current !== AppMode.IDLE) {
+              performAnalysis(modeRef.current, transcript);
+              speak("Anlaşıldı, bakıyorum...");
+            } else {
+              speak("Önce bir mod seçmelisin.");
+            }
+          }
+        };
+
+        (window as any).recognitionInstance = recognition;
+        recognition.start();
+
+      }, [isListening, handleModeSelect, toggleTorch]);
+
+      return (
+        <main className="relative w-full h-full" onClick={initAudio}>
+          {/* App Liveness Indicator */}
+          <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full z-[9999] animate-pulse"></div>
+
+          {/* Removed IntroLayer */}
+
+          <CameraLayer
+            ref={cameraRef}
+            onBrightnessCheck={handleBrightnessCheck}
+          />
+
+          {/* Visual Overlays */}
+          <BoundingBoxLayer
+            boxes={[...boxes, ...detectedBoxes]}
+            onBoxClick={handleBoxClick}
+          />
+          <OverlayLayer />
+
+          <CockpitLayer
+            currentMode={mode}
+            aiText={aiText}
+            isProcessing={isProcessing}
+            onModeSelect={handleModeSelect}
+            isTorchOn={isTorchOn}
+            onToggleTorch={() => toggleTorch()}
+            isMuted={isMuted}
+            onToggleMute={toggleMute}
+            onSwitchCamera={() => cameraRef.current?.switchCamera()}
+            isListening={isListening}
+            onToggleListening={toggleListening}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+
+          <SettingsModal
+            isOpen={showSettings}
+            onClose={() => setShowSettings(false)}
+          />
+        </main>
+      );
     };
 
-    (window as any).recognitionInstance = recognition;
-    recognition.start();
-
-  }, [isListening, handleModeSelect, toggleTorch]);
-
-  return (
-    <main className="relative w-full h-full" onClick={initAudio}>
-      {/* App Liveness Indicator */}
-      <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full z-[9999] animate-pulse"></div>
-
-      {/* Removed IntroLayer */}
-
-      <CameraLayer
-        ref={cameraRef}
-        onBrightnessCheck={handleBrightnessCheck}
-      />
-
-      {/* Visual Overlays */}
-      <BoundingBoxLayer
-        boxes={[...boxes, ...detectedBoxes]}
-        onBoxClick={handleBoxClick}
-      />
-      <OverlayLayer />
-
-      <CockpitLayer
-        currentMode={mode}
-        aiText={aiText}
-        isProcessing={isProcessing}
-        onModeSelect={handleModeSelect}
-        isTorchOn={isTorchOn}
-        onToggleTorch={() => toggleTorch()}
-        isMuted={isMuted}
-        onToggleMute={toggleMute}
-        onSwitchCamera={() => cameraRef.current?.switchCamera()}
-        isListening={isListening}
-        onToggleListening={toggleListening}
-        onOpenSettings={() => setShowSettings(true)}
-      />
-
-      <SettingsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
-    </main>
-  );
-};
-
-export default App;
+    export default App;

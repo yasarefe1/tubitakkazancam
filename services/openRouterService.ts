@@ -14,25 +14,36 @@ const getApiKey = () => {
     return "";
 };
 
-const getSystemInstruction = (mode: AppMode): string => {
+const getSystemInstruction = (mode: AppMode, customQuery?: string): string => {
+    // Eğer kullanıcı özel bir soru sorduysa, sadece ona odaklan
+    if (customQuery) {
+        return `Sen görme engelli bir asistanısın. Kullanıcı sana şu soruyu sordu: "${customQuery}"
+        
+KURALLAR:
+1. SADECE TÜRKÇE cevap ver.
+2. Kısa ve net ol (1-2 cümle).
+3. Sadece sorulan soruya cevap ver.
+4. Gördüğün gerçeği konuş, uydurma.
+
+YANIT FORMATI:
+{"speech": "Sorunun cevabı", "boxes": []}`;
+    }
+
     // KULLANICI KURALLARI - DEĞİŞTİRİLEMEZ
     const strictRules = `
 1. Çok kısa konuş (Maksimum 1-2 cümle).
-2. ASLA "Resimde", "Görüntüde", "Kamera açısında" gibi kelimeler kullanma. Direkt konuya gir.
-3. Önce hayati tehlikeleri (Çukur, Araba, Direk, Basamak) söyle.
-4. Konum belirterek konuş (Sağında masa var, önün boş, saat 12 yönünde ağaç var gibi).
-5. Mesafeyi tahmin et (çok yakın, yakın, uzak).
-6. SADECE TÜRKÇE KONUŞ.
+2. ASLA "Resimde", "Görüntüde" gibi kelimeler kullanma.
+3. Gördüğün GERÇEK nesneleri anlat. Örnekleri tekrar etme.
+4. SADECE TÜRKÇE KONUŞ.
     `;
 
     if (mode === "TARAMA") {
-        return `Sen gerçek bir "Kör Asistanı"sın. Gördüklerini değil, kullanıcının bilmesi gerekenleri anlat.
+        return `Sen gerçek bir "Kör Asistanı"sın.
 ${strictRules}
 
 GÖREV: Çevreyi tarayıp en önemli bilgiyi ver.
-- Örnek Format: "Dikkat, önünde alçak sehpa var, çok yakın. Sol tarafın açık."
-- Örnek Format: "Koridor boyunca önün boş, ilerleyebilirsin."
-- Örnek Format: "Sağında masa, solunda duvar var. Önün açık."
+- Hayati tehlikeleri (Çukur, Araba, Direk) önce söyle.
+- Nesnelerin konumunu (Sağ, Sol, Ön) ve mesafesini (Yakın, Uzak) belirt.
 
 YANIT FORMATI:
 {"speech": "Kurala uygun kısa cevap", "boxes": []}`;
@@ -41,10 +52,10 @@ YANIT FORMATI:
     if (mode === "OKUMA") {
         return `Sen bir okuma asistanısın.
 ${strictRules}
-GÖREV: Gördüğün yazıyı direkt oku. Yorum yapma.
-- Eğer yazı yoksa "Yazı yok" de.
-- Örnek: "Tabelada 'Çıkış' yazıyor."
-- Örnek: "İlaç kutusu: Parol."
+GÖREV: Gördüğün yazıyı direkt oku.
+- UZUN YAZILARI da oku.
+- Kitap, belge, tabela ne varsa hepsini oku.
+- Yorum yapma, sadece yazanı oku.
 
 YANIT FORMATI:
 {"speech": "Okunan metin", "boxes": []}`;
@@ -54,8 +65,7 @@ YANIT FORMATI:
         return `Sen bir yol tarifi asistanısın.
 ${strictRules}
 GÖREV: Sadece yürüme yolunu ve engelleri söyle.
-- Örnek: "Düz git, önün açık."
-- Örnek: "Dur! Önünde merdiven var."
+- "Düz git", "Sola dön", "Dur" gibi komutlar ver.
 
 YANIT FORMATI:
 {"speech": "Yönlendirme", "boxes": []}`;
@@ -69,10 +79,10 @@ YANIT FORMATI:
 {"speech": "Cevap", "boxes": []}`;
 };
 
-export const analyzeImageWithQwen = async (base64Image: string, mode: AppMode): Promise<AnalysisResult> => {
+export const analyzeImageWithQwen = async (base64Image: string, mode: AppMode, customQuery?: string): Promise<AnalysisResult> => {
     const apiKey = getApiKey();
     if (!apiKey) {
-        throw new Error("OpenRouter API anahtarı girilmemiş.");
+        throw new Error("OpenRouter API anahtarı bulunamadı (Qwen)");
     }
 
     try {
@@ -81,28 +91,44 @@ export const analyzeImageWithQwen = async (base64Image: string, mode: AppMode): 
             imageUrl = `data:image/jpeg;base64,${base64Image}`;
         }
 
+        const systemPrompt = getSystemInstruction(mode, customQuery);
+
+        // Kullanıcı sorusu veya mod açıklaması
+        const userMessage = customQuery ? `Soru: ${customQuery}` : `Bu görüntüyü analiz et (Mod: ${mode})`;
+
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${apiKey}`,
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://tubitak-vision.vercel.app", // Optional
-                "X-Title": "Üçüncü Göz"
+                "HTTP-Referer": "https://localhost:3000", // Optional
+                "X-Title": "Third Eye App"
             },
             body: JSON.stringify({
                 model: "qwen/qwen-2.5-vl-7b-instruct",
                 messages: [
                     {
+                        role: "system",
+                        content: systemPrompt
+                    },
+                    {
                         role: "user",
                         content: [
-                            { type: "text", text: getSystemInstruction(mode) },
-                            { type: "image_url", image_url: { url: imageUrl } }
+                            {
+                                type: "text",
+                                text: userMessage
+                            },
+                            {
+                                type: "image_url",
+                                image_url: {
+                                    url: imageUrl
+                                }
+                            }
                         ]
                     }
                 ],
-                response_format: { type: "json_object" },
-                temperature: 0.1,
-                max_tokens: 500
+                max_tokens: 300, // Daha uzun cevaplar için artırıldı
+                response_format: { type: "json_object" }
             })
         });
 
