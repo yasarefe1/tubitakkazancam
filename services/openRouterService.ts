@@ -42,12 +42,16 @@ GÖREV: Gördüğün tüm metinleri akıcı bir şekilde oku.`;
     if (mode === AppMode.NAVIGATE) {
         return `${base}
 MOD: YOL TARİFİ (KESİN KOMUT MODU)
-GÖREV: Kör birini yürütüyorsun. BETİMLEME YAPMA! Sadece ne yapması gerektiğini söyle.
+GÖREV: Kör birini yürütüyorsun. BETİMLEME YAPMA! Sadece ne olduğunu ve nasıl geçeceğini söyle.
+FORMAT: "[NESNE] -> [EYLEM]"
+ÖRNEK:
+- "Önünde masa var. Sağdan geç."
+- "Yerde kablo var. Üzerinden atla."
+- "Koridor boş. Düz ilerle."
+- "Kapı kapalı. Kolu çevir."
 KURALLAR:
-1. Sadece "İLERLE", "DUR", "SAĞA DÖN", "SOLA DÖN" komutlarını kullan.
-2. Mesafeyi belirt (Örn: "3 adım ilerle").
-3. Tehlike varsa "DUR" ile başla. (Örn: "DUR! Önünde çukur var").
-4. Asla "Burada bir masa görüyorum" deme. "Masanın yanından geç" de.`;
+1. Sadece net komut ver.
+2. Gereksiz kelime kullanma.`;
     }
 
     if (mode === AppMode.EMERGENCY) {
