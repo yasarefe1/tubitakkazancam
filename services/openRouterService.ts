@@ -68,52 +68,134 @@ GÖREV: En hızlı çıkış yolunu bul ve panik yapmadan yönlendir.`;
 const makeRequest = async (apiKey: string, model: string, systemPrompt: string, userMessage: string, imageUrl: string) => {
     const siteUrl = typeof window !== 'undefined' ? window.location.origin : "https://localhost:3000";
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": siteUrl,
-            "X-Title": "Third Eye App"
-        },
-        body: JSON.stringify({
-            model: model,
-            messages: [
-                { role: "system", content: systemPrompt },
-                {
-                    role: "user",
-                    content: [
-                        { type: "text", text: userMessage },
-                        { type: "image_url", image_url: { url: imageUrl } }
-                    ]
+    const maxRetries = 3;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+        try {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": siteUrl,
+                    "X-Title": "Third Eye App"
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        {
+                            role: "user",
+                            content: [
+                                { type: "text", text: userMessage },
+                                { type: "image_url", image_url: { url: imageUrl } }
+                            ]
+                        }
+                    ],
+                    max_tokens: 1000,
+                    temperature: 0.1,
+                    response_format: { type: "json_object" }
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                // 429 (Rate Limit) veya 5xx (Server Error) ise tekrar dene
+                if (response.status === 429 || response.status >= 500) {
+                    console.warn(`${model} Meşgul (${response.status}), tekrar deneniyor... (${attempt + 1}/${maxRetries})`);
+                    attempt++;
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
+                    continue;
                 }
-            ],
-            max_tokens: 1000,
-            temperature: 0.1,
-            response_format: { type: "json_object" }
-        })
-    });
+                throw new Error(`${model} Hatası (${response.status}): ${errorText}`);
+            }
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`${model} Hatası (${response.status}): ${errorText}`);
+            const data = await response.json();
+            // Başarılıysa döngüden çık ve devam et
+            // data değişkeni aşağıda kullanılacak
+            return processResponse(data, content => content); // Helper function usage extraction below
+
+            // NOT: Aşağıdaki response işleme mantığını buraya taşıyorum çünkü scope değişti.
+            const content = data.choices?.[0]?.message?.content;
+            if (!content) throw new Error("Boş yanıt döndü");
+
+            let cleanContent = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+            const parsed = JSON.parse(cleanContent);
+            if (parsed.speech) return { text: parsed.speech, boxes: parsed.boxes || [] };
+            if (parsed.text) return { text: parsed.text, boxes: parsed.boxes || [] };
+            return parsed;
+
+        } catch (error: any) {
+            if (attempt === maxRetries - 1) throw error; // Son denemeydi, hatayı fırlat
+            attempt++;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    throw new Error("Maksimum deneme sayısına ulaşıldı.");
+    const maxRetries = 3;
+    let attempt = 0;
 
-    if (!content) throw new Error("Boş yanıt döndü");
+    while (attempt < maxRetries) {
+        try {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": siteUrl,
+                    "X-Title": "Third Eye App"
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        {
+                            role: "user",
+                            content: [
+                                { type: "text", text: userMessage },
+                                { type: "image_url", image_url: { url: imageUrl } }
+                            ]
+                        }
+                    ],
+                    max_tokens: 1000,
+                    temperature: 0.1,
+                    response_format: { type: "json_object" }
+                })
+            });
 
-    try {
-        let cleanContent = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-        const parsed = JSON.parse(cleanContent);
-        if (parsed.speech) return { text: parsed.speech, boxes: parsed.boxes || [] };
-        if (parsed.text) return { text: parsed.text, boxes: parsed.boxes || [] };
-        return parsed;
-    } catch (e) {
-        console.warn("JSON parse hatası:", content);
-        return { text: content, boxes: [] };
+            if (!response.ok) {
+                const errorText = await response.text();
+                if (response.status === 429 || response.status >= 500) {
+                    console.warn(`${model} Meşgul (${response.status}), tekrar deneniyor... (${attempt + 1}/${maxRetries})`);
+                    attempt++;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    continue;
+                }
+                throw new Error(`${model} Hatası (${response.status}): ${errorText}`);
+            }
+
+            const data = await response.json();
+            const content = data.choices?.[0]?.message?.content;
+
+            if (!content) throw new Error("Boş yanıt döndü");
+
+            let cleanContent = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+            const parsed = JSON.parse(cleanContent);
+            if (parsed.speech) return { text: parsed.speech, boxes: parsed.boxes || [] };
+            if (parsed.text) return { text: parsed.text, boxes: parsed.boxes || [] };
+            return parsed;
+
+        } catch (error: any) {
+            console.warn(`Deneme ${attempt + 1} başarısız:`, error.message);
+            if (attempt === maxRetries - 1) throw error;
+            attempt++;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
     }
+
+    throw new Error("Sunucu çok yoğun, daha sonra tekrar deneyin.");
 };
 
 export const analyzeImageWithQwen = async (base64Image: string, mode: AppMode, customQuery?: string): Promise<AnalysisResult> => {
