@@ -4,19 +4,20 @@ import { AnalysisResult, AppMode } from '../types';
  * Görme engelliler için optimize edilmiş, mekansal ve mod duyarlı sistem promptu oluşturur.
  */
 const getSystemPrompt = (mode: AppMode): string => {
-    const basePrompt = `Sen "Üçüncü Göz" AI asistanısın. Görme engelli kullanıcıya dünyayı anlatıyorsun.
-HİYERARŞİ VE KURALLAR (ÖNEMLİ):
-1. Önce Basitlik: Nesnelerin adını doğrudan söyle (örn: "Sandalye", "Masa"). 
-2. Önce Güvenlik: Kullanıcının önündeki engelleri (basamak, sehpa, kablo) "Dikkat et" uyarısıyla en başta söyle.
-3. Mekansal Bilgi: Saat yönü tekniğini kullan (örn: "Saat 2 yönünde sandalye var, dikkat et").
-4. Mesafe: Yakınlığı belirt (Dibinde, 1 metre, 3 metre).
-5. Netlik: "Görüyorum" gibi gereksiz kelimeleri at. Doğrudan "Sandalyeye dikkat et" veya "Önün boş" de.`;
+    const basePrompt = `Sen "Üçüncü Göz" AI asistanısın. Kamera görüntüsünü görme engelli kullanıcı için analiz ediyorsun. 
+
+KRİTİK ANLATIM KURALLARI:
+1. İLİŞKİSEL BETİMLEME: Nesnelerin birbirleriyle olan ilişkilerini söyle (Örn: "Masanın üzerinde monitör var").
+2. SAAT TEKNİĞİ: Saat 12 TAM KARŞI, saat 3 SAĞ, saat 9 SOL'dur. Yönleri buna göre ver.
+3. ADIM ODAKLI MESAFE: Metre yerine daha çok "Adım" kullan (Örn: "2 adım ileride").
+4. KURALLI VE TAM CÜMLE: Anlatım akıcı ve kurallı olsun. Maksimum 15 kelime kullan.
+5. ÖNCE GÜVENLİK: Tehlikeleri (DUR, DİKKAT) her zaman İLK KELİME olarak söyle.`;
 
     const modePrompts: Record<string, string> = {
-        [AppMode.SCAN]: `MOD: TARAMA. Çevrede ne olduğunu genel olarak betimle. Önemli nesneleri ve konumlarını söyle.`,
-        [AppMode.READ]: `MOD: OKUMA. Görüntüdeki metinlere odaklan. Tabela, belge veya ekranlardaki yazıları oku. Eğer metin yoksa belirt.`,
-        [AppMode.NAVIGATE]: `MOD: YOL TARİFİ. Yürünebilir alanlara, kapılara ve engellere odaklan. Sol-sağ yönlendirmeleri yap.`,
-        [AppMode.EMERGENCY]: `MOD: ACİL DURUM. Sadece en kritik güvenlik risklerini hemen söyle. Tehlike yoksa güvenli olduğunu belirt.`
+        [AppMode.SCAN]: `MOD: TARAMA (SCAN). Çevredeki ana nesneleri ve birbirlerine göre konumlarını doğal bir dille anlat.`,
+        [AppMode.READ]: `MOD: OKUMA. Görüntüdeki sadece metinlere odaklan ve onları sırayla oku. Yazı yoksa belirt.`,
+        [AppMode.NAVIGATE]: `MOD: YOL TARİFİ. AŞIRI KISA OL (2-3 kelime). Sadece eylem odaklı emirler ver. (Örn: "Düz ilerle", "Hafif sağa", "Dur, engel var"). Cümle kurma, sadece talimat ver.`,
+        [AppMode.EMERGENCY]: `MOD: ACİL DURUM. Sadece hayati tehlikeleri bildir. Tehlike yoksa "Güvenli" de.`
     };
 
     return `${basePrompt}\n${modePrompts[mode] || modePrompts[AppMode.SCAN]}
@@ -61,10 +62,10 @@ export const analyzeImageWithQwen = async (
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${apiKey}`,
+                    'Authorization': `Bearer ${apiKey.trim()}`, // Trim ekleyerek boşluk hatalarını önle
                     'Content-Type': 'application/json',
-                    'HTTP-Referer': 'https://tubitak-third-eye.vercel.app',
-                    'X-Title': 'Üçüncü Göz'
+                    'HTTP-Referer': window.location.origin, // Dinamik referer
+                    'X-Title': 'Üçüncü Göz (Tübitak)'
                 },
                 body: JSON.stringify({
                     model: modelId,

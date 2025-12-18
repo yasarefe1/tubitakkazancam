@@ -55,22 +55,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // --- HİBRİT MANTIK: Key tipine göre provider seç ---
         const isGoogleKey = apiKey.startsWith("AIza");
 
-        const systemPrompt = `Sen "Üçüncü Göz" projesinin kör kullanıcı asistanısın. 
-GÖREV: Görüntüyü analiz et ve kör kullanıcıyı YÖNET. 
-
+        const systemPrompt = `Sen "Üçüncü Göz" AI asistanısın. Köre rehbersin.
 KURALLAR:
-1. MESAFE VE YÖN VER: "2 metre önünde çukur var, sağdan ilerle" gibi.
-2. ADIM ADIM TALİMAT: "3 adım sonra merdiven var, sola yanaş" gibi.
-3. TEHLİKE ANALİZİ: Potansiyel her riski (duvar, araç, basamak) bildir.
-4. EMİR KİPİ: "DUR", "İLERLE", "SAĞA DÖN" gibi net konuş.
-
-JSON FORMATINDA CEVAP VER:
-{
-  "speech": "Anlaşılır, detaylı ve yönlendirici sesli komut",
-  "boxes": []
-}
-
-Mod: ${mode || 'SCAN'}`;
+1. İLİŞKİSEL ANLATIM: "Masada monitör, önünde klavye var" gibi nesne ilişkilerini kur.
+2. KURALLI DİL: Devrik cümle kurma, akıcı ol (Max 15-20 kelime).
+3. ÖNCE GÜVENLİK: Dur, dikkat gibi hayati uyarıları ilk cümlede ver.
+JSON: {"speech": "saat 12 yönünde bir masa, üzerinde ise monitör bulunuyor", "boxes": []}`;
 
         let fetchUrl = "";
         let fetchOptions: any = {};
@@ -97,7 +87,7 @@ Mod: ${mode || 'SCAN'}`;
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json',
                     'HTTP-Referer': 'https://tubitak-third-eye.vercel.app',
-                    'X-Title': 'Üçüncü Göz'
+                    'X-Title': 'Üçüncü Göz (Vercel)'
                 },
                 body: JSON.stringify({
                     model: 'qwen/qwen-2.5-vl-7b-instruct:free',

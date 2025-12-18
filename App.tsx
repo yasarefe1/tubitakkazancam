@@ -51,6 +51,7 @@ const App: React.FC = () => {
   const isProcessingRef = useRef<boolean>(false);
   const modeRef = useRef<AppMode>(AppMode.IDLE);
   const manualTorchOverrideRef = useRef<boolean>(false);
+  const spokenHistoryRef = useRef<string[]>([]);
 
   // Sync refs with state
   useEffect(() => {
@@ -304,7 +305,7 @@ const App: React.FC = () => {
     if (isProcessingRef.current) return;
 
     setIsProcessing(true);
-    setAiText(customQuery ? "Soru analizi..." : "Analiz ediliyor...");
+    // setAiText(customQuery ? "Soru analizi..." : "Analiz ediliyor..."); // Kullanıcıyı her karede darlama
 
     try {
       const video = cameraRef.current?.getVideoElement();
@@ -350,13 +351,29 @@ const App: React.FC = () => {
           }
 
           if (modeRef.current === targetMode && result) {
-            // DUPLIKASYON KONTROLÜ: Eğer metin %100 aynıysa tekrar konuşma (kullanıcıyı darlama)
-            // Ama kutuları güncelle ki ekranda görünsün.
             setBoxes(result.boxes);
 
-            if (result.text !== aiText) {
+            // GELİŞMİŞ TEKRAR KONTROLÜ (HAFIZA)
+            const normalize = (t: string) => t.toLowerCase().replace(/[.,!?;:]/g, "").trim();
+            const currentText = normalize(result.text);
+
+            // Son 5 cümleyi kontrol et (Hafızayı genişlet)
+            const isTooSimilar = spokenHistoryRef.current.some(pastText => {
+              const p = normalize(pastText);
+              if (currentText === p) return true;
+              const currentWords = currentText.split(" ");
+              const pastWords = p.split(" ");
+              const intersection = currentWords.filter(w => pastWords.includes(w));
+              // %50 benzerlik bile olsa konuşma (Daha agresif filtre)
+              return intersection.length / Math.max(currentWords.length, pastWords.length) > 0.5;
+            });
+
+            if (!isTooSimilar && currentText.length > 2) {
               setAiText(result.text);
               speak(result.text);
+
+              // Hafızayı güncelle (max 5 cümle)
+              spokenHistoryRef.current = [result.text, ...spokenHistoryRef.current].slice(0, 5);
             }
           }
         }
@@ -436,22 +453,20 @@ const App: React.FC = () => {
           const emerNumber = localStorage.getItem('EMERGENCY_NUMBER') || "";
 
           if (emerNumber) {
-            speak("Konumunuz belirlendi. WhatsApp ile göndermek için ekrandaki kırmızı butona tekrar basın veya bu mesajı bekleyin.");
-            // WhatsApp linkini oluştur ve sakla (belki bir ref veya state ile)
-            const waUrl = `https://wa.me/${emerNumber.replace(/\D/g, '')}?text=Acil%20durum!%20Konumum:%20${encodeURIComponent(mapUrl)}`;
+            speak("Konumunuz belirlendi. WhatsApp ile yakınınıza kaybolduğunuz mesajı gönderiliyor.");
+            const message = `Acil durum! Kayboldum, lütfen yardım et. Konumum: ${mapUrl}`;
+            const waUrl = `https://wa.me/${emerNumber.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
 
-            // Otomatik yönlendirme yerine kullanıcıya seçenek sunmak daha güvenli ama 
-            // kör kullanıcı için doğrudan açmak daha pratik olabilir.
             setTimeout(() => {
               window.open(waUrl, '_blank');
-            }, 3000);
+            }, 2000);
           } else {
-            speak("Konumunuz bulundu fakat kayıtlı acil durum numarası yok. Lütfen ayarlardan numara ekleyin.");
+            speak("Konumunuz bulundu fakat kayıtlı acil durum numarası yok. Lütfen ayarlardan bir numara ekleyin.");
           }
         },
         (error) => {
           console.error("Konum hatası:", error);
-          speak("Konumunuz alınamadı. Lütfen konum iznini kontrol edin.");
+          speak("Konumunuz alınamadı. Lütfen konum izni verdiğinizden emin olun.");
         }
       );
     } else {
