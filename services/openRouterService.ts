@@ -112,84 +112,24 @@ const makeRequest = async (apiKey: string, model: string, systemPrompt: string, 
             }
 
             const data = await response.json();
-            // Başarılıysa döngüden çık ve devam et
-            // data değişkeni aşağıda kullanılacak
-            return processResponse(data, content => content); // Helper function usage extraction below
-
-            // NOT: Aşağıdaki response işleme mantığını buraya taşıyorum çünkü scope değişti.
             const content = data.choices?.[0]?.message?.content;
+
             if (!content) throw new Error("Boş yanıt döndü");
 
             let cleanContent = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-            const parsed = JSON.parse(cleanContent);
-            if (parsed.speech) return { text: parsed.speech, boxes: parsed.boxes || [] };
-            if (parsed.text) return { text: parsed.text, boxes: parsed.boxes || [] };
-            return parsed;
-
-        } catch (error: any) {
-            if (attempt === maxRetries - 1) throw error; // Son denemeydi, hatayı fırlat
-            attempt++;
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-    }
-
-    throw new Error("Maksimum deneme sayısına ulaşıldı.");
-    const maxRetries = 3;
-    let attempt = 0;
-
-    while (attempt < maxRetries) {
-        try {
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${apiKey}`,
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": siteUrl,
-                    "X-Title": "Third Eye App"
-                },
-                body: JSON.stringify({
-                    model: model,
-                    messages: [
-                        { role: "system", content: systemPrompt },
-                        {
-                            role: "user",
-                            content: [
-                                { type: "text", text: userMessage },
-                                { type: "image_url", image_url: { url: imageUrl } }
-                            ]
-                        }
-                    ],
-                    max_tokens: 1000,
-                    temperature: 0.1,
-                    response_format: { type: "json_object" }
-                })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                if (response.status === 429 || response.status >= 500) {
-                    console.warn(`${model} Meşgul (${response.status}), tekrar deneniyor... (${attempt + 1}/${maxRetries})`);
-                    attempt++;
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    continue;
-                }
-                throw new Error(`${model} Hatası (${response.status}): ${errorText}`);
+            try {
+                const parsed = JSON.parse(cleanContent);
+                if (parsed.speech) return { text: parsed.speech, boxes: parsed.boxes || [] };
+                if (parsed.text) return { text: parsed.text, boxes: parsed.boxes || [] };
+                return parsed;
+            } catch (jsonError) {
+                console.warn("JSON Parse Hatası:", content);
+                return { text: content, boxes: [] };
             }
-
-            const data = await response.json();
-            const content = data.choices?.[0]?.message?.content;
-
-            if (!content) throw new Error("Boş yanıt döndü");
-
-            let cleanContent = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-            const parsed = JSON.parse(cleanContent);
-            if (parsed.speech) return { text: parsed.speech, boxes: parsed.boxes || [] };
-            if (parsed.text) return { text: parsed.text, boxes: parsed.boxes || [] };
-            return parsed;
 
         } catch (error: any) {
             console.warn(`Deneme ${attempt + 1} başarısız:`, error.message);
-            if (attempt === maxRetries - 1) throw error;
+            if (attempt === maxRetries - 1) throw error; // Son denemeydi, hatayı fırlat
             attempt++;
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
