@@ -7,6 +7,7 @@ import SettingsModal from './components/SettingsModal';
 import { AppMode, CameraHandle, BoundingBox } from './types';
 import { analyzeImageWithGemini } from './services/geminiService';
 import { analyzeImageWithQwen } from './services/openRouterService';
+import { analyzeImageWithGroq } from './services/groqService';
 // import { analyzeImageWithGroq } from './services/groqService';
 
 import { loadObjectDetectionModel, detectObjects, isModelLoaded } from './services/objectDetectionService';
@@ -335,37 +336,52 @@ const App: React.FC = () => {
           if (orKey) {
             console.log("🔵 Analiz Başlıyor... Soru:", customQuery || "Yok");
             try {
-              // Önce Qwen'i dene
+              // 1. ADIM: Qwen'i dene
               result = await analyzeImageWithQwen(base64Image, targetMode, customQuery);
-              if (result) {
-                console.warn("✅ Qwen başarılı!");
-              }
+              if (result) console.warn("✅ Qwen başarılı!");
             } catch (e: any) {
-              console.error("❌ Qwen Başarısız, Gemini deneniyor...", e.message);
+              console.error("❌ Qwen Başarısız, Groq deneniyor...", e.message);
 
-              // Qwen patlarsa Gemini'yi dene (Eğer anahtarı varsa)
-              const geminiKey = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('GEMINI_API_KEY');
-              if (geminiKey) {
+              // 2. ADIM: Groq'u dene (Eğer anahtarı varsa)
+              const groqKey = import.meta.env.VITE_GROQ_API_KEY || localStorage.getItem('GROQ_API_KEY');
+              if (groqKey) {
                 try {
-                  result = await analyzeImageWithGemini(base64Image, targetMode, customQuery);
-                  console.warn("✅ Gemini yedek olarak devreye girdi!");
-                } catch (gemError: any) {
-                  console.error("❌ Gemini de başarısız:", gemError.message);
-                  setAiText(`Sistem Hatası: Modeller yanıt vermiyor.`);
+                  result = await analyzeImageWithGroq(base64Image, targetMode, customQuery);
+                  console.warn("✅ Groq başarılı!");
+                } catch (groqError: any) {
+                  console.error("❌ Groq da başarısız, Gemini deneniyor...", groqError.message);
+
+                  // 3. ADIM: Gemini'yi dene (Eğer anahtarı varsa)
+                  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('GEMINI_API_KEY');
+                  if (geminiKey) {
+                    try {
+                      result = await analyzeImageWithGemini(base64Image, targetMode, customQuery);
+                      console.warn("✅ Gemini yedek olarak devreye girdi!");
+                    } catch (gemError: any) {
+                      console.error("❌ Gemini de başarısız:", gemError.message);
+                      setAiText(`Sistem Hatası: Tüm modeller başarısız.`);
+                    }
+                  } else {
+                    setAiText(`Bağlantı Hatası: ${groqError.message}.`);
+                  }
                 }
               } else {
-                setAiText(`Bağlantı Hatası: ${e.message}. Alternatif olarak Gemini anahtarı girin.`);
+                setAiText(`Bağlantı Hatası: ${e.message}. Alternatif anahtar gerekli.`);
               }
             }
           } else {
-            // Hiç anahtar yoksa Gemini'yi tek başına dene
+            // Qwen anahtarı yoksa diğerlerini sırayla dene
+            const groqKey = import.meta.env.VITE_GROQ_API_KEY || localStorage.getItem('GROQ_API_KEY');
             const geminiKey = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('GEMINI_API_KEY');
-            if (geminiKey) {
+
+            if (groqKey) {
               try {
-                result = await analyzeImageWithGemini(base64Image, targetMode, customQuery);
-              } catch (e: any) {
-                setAiText(`Hata: ${e.message}`);
+                result = await analyzeImageWithGroq(base64Image, targetMode, customQuery);
+              } catch (e) {
+                if (geminiKey) result = await analyzeImageWithGemini(base64Image, targetMode, customQuery).catch(() => null);
               }
+            } else if (geminiKey) {
+              result = await analyzeImageWithGemini(base64Image, targetMode, customQuery).catch(() => null);
             } else {
               setAiText("API Anahtarı bulunamadı.");
             }

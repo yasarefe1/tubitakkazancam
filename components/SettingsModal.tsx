@@ -8,22 +8,26 @@ interface SettingsModalProps {
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const [apiKey, setApiKey] = useState('');
   const [openRouterKey, setOpenRouterKey] = useState('');
+  const [groqApiKey, setGroqApiKey] = useState('');
   const [emergencyNumber, setEmergencyNumber] = useState('');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const storedKey = localStorage.getItem('GEMINI_API_KEY') || import.meta.env.VITE_GEMINI_API_KEY || '';
     const storedORKey = localStorage.getItem('OPENROUTER_API_KEY') || import.meta.env.VITE_OPENROUTER_API_KEY || '';
+    const storedGroqKey = localStorage.getItem('GROQ_API_KEY') || import.meta.env.VITE_GROQ_API_KEY || '';
     const storedNumber = localStorage.getItem('EMERGENCY_NUMBER');
 
     setApiKey(storedKey);
     setOpenRouterKey(storedORKey);
+    setGroqApiKey(storedGroqKey);
     if (storedNumber) setEmergencyNumber(storedNumber);
   }, []);
 
   const handleSave = () => {
     localStorage.setItem('GEMINI_API_KEY', apiKey.trim());
     localStorage.setItem('OPENROUTER_API_KEY', openRouterKey.trim());
+    localStorage.setItem('GROQ_API_KEY', groqApiKey.trim());
     localStorage.setItem('EMERGENCY_NUMBER', emergencyNumber.trim());
     setSaved(true);
     setTimeout(() => {
@@ -36,9 +40,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const handleClear = () => {
     localStorage.removeItem('GEMINI_API_KEY');
     localStorage.removeItem('OPENROUTER_API_KEY');
+    localStorage.removeItem('GROQ_API_KEY');
     localStorage.removeItem('EMERGENCY_NUMBER');
     setApiKey('');
     setOpenRouterKey('');
+    setGroqApiKey('');
     setEmergencyNumber('');
   };
 
@@ -99,6 +105,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
           <div>
             <label className="block text-[10px] font-mono font-bold text-zinc-500 mb-1 uppercase tracking-wider">
+              GROQ API KEY (LLAMA 4)
+            </label>
+            <input
+              type="password"
+              value={groqApiKey}
+              onChange={(e) => {
+                setGroqApiKey(e.target.value);
+                setSaved(false);
+              }}
+              placeholder="gsk_..."
+              className="w-full bg-black/50 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 transition-colors font-mono text-sm shadow-inner"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-mono font-bold text-zinc-500 mb-1 uppercase tracking-wider">
               ACİL DURUM NUMARASI
             </label>
             <input
@@ -144,10 +166,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                 OpenRouter'dan Anahtar Al (Qwen)
               </span>
             </a>
+            <a
+              href="https://console.groq.com/keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-center gap-2 text-xs text-orange-500/80 hover:text-orange-400 transition-colors"
+            >
+              <span className="group-hover:scale-110 transition-transform">⚡</span>
+              <span className="underline decoration-orange-500/30 underline-offset-4 group-hover:decoration-orange-400">
+                Groq'dan Anahtar Al (Llama 4)
+              </span>
+            </a>
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 
