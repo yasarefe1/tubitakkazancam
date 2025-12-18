@@ -374,7 +374,7 @@ const App: React.FC = () => {
       // 2. Biter bitmez (veya hata alsa bile) tekrarla
       // Ama biraz bekle (10ms) ki UI donmasın ama anlık olsun
       if (isActive && mode !== AppMode.IDLE) {
-        setTimeout(startLoop, 10);
+        setTimeout(startLoop, 2000);
       }
     };
 
