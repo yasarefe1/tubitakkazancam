@@ -492,10 +492,10 @@ const App: React.FC = () => {
 
     if (manualTorchOverrideRef.current) return;
 
-    if (!isTorchOn && brightness < 100) {
+    if (!isTorchOn && brightness < 160) {
       toggleTorch(true);
-      speak("Karanlık, ışık açıldı.");
-    } else if (isTorchOn && brightness > 180) {
+      speak("Ortam karanlık, ışık açıldı.");
+    } else if (isTorchOn && brightness > 220) {
       toggleTorch(false);
     }
   };
