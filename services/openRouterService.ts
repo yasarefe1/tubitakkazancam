@@ -1,11 +1,10 @@
 import { AppMode, AnalysisResult } from "../types";
 
-// API Key Helper - 3 Key'i de alır
+// API Key Helper - 2 Key kullanır
 const getApiKeys = () => {
     return {
         key1: import.meta.env.VITE_OPENROUTER_API_KEY || localStorage.getItem('OPENROUTER_API_KEY') || "",
-        key2: import.meta.env.VITE_OPENROUTER_API_KEY_2 || "",
-        key3: import.meta.env.VITE_OPENROUTER_API_KEY_3 || ""
+        key2: import.meta.env.VITE_OPENROUTER_API_KEY_2 || ""
     };
 };
 
@@ -149,25 +148,26 @@ export const analyzeImageWithQwen = async (base64Image: string, mode: AppMode, c
     const systemPrompt = getSystemInstruction(mode, customQuery);
     const userMessage = customQuery ? `Soru: ${customQuery}` : `Bu görüntüyü analiz et (Mod: ${mode})`;
 
-    // 1. DENEME: QWEN 3 VL 32B (Key 1)
+    // Qwen VL modelleri - OpenRouter
+    // 1. DENEME: Qwen3 VL 32B (Key 1) - En güçlü
     if (keys.key1) {
         try {
             console.log("🔵 1. Deneme: Qwen3 VL 32B...");
             return await makeRequest(keys.key1, "qwen/qwen3-vl-32b-instruct", systemPrompt, userMessage, imageUrl);
         } catch (error: any) {
-            console.warn("❌ Qwen3 başarısız:", error.message);
+            console.warn("❌ Qwen3 32B başarısız:", error.message);
         }
     }
 
-    // 2. DENEME: QWEN 2.5 VL 7B (Key 2)
+    // 2. DENEME: Qwen 2.5 VL 7B (Key 2) - Hızlı yedek
     if (keys.key2) {
         try {
-            console.log("🟡 2. Deneme: Qwen 2.5 VL...");
+            console.log("🟡 2. Deneme: Qwen 2.5 VL 7B...");
             return await makeRequest(keys.key2, "qwen/qwen-2.5-vl-7b-instruct", systemPrompt, userMessage, imageUrl);
         } catch (error: any) {
-            console.warn("❌ Qwen 2.5 başarısız:", error.message);
+            console.warn("❌ Qwen 2.5 7B başarısız:", error.message);
         }
     }
 
-    throw new Error("Tüm Qwen modelleri başarısız oldu. İnternet bağlantını kontrol et veya daha sonra tekrar dene.");
+    throw new Error("Tüm modeller başarısız oldu. İnternet bağlantını kontrol et veya daha sonra tekrar dene.");
 };
