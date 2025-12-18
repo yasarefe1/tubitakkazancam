@@ -349,26 +349,34 @@ const App: React.FC = () => {
     }
   };
 
-  // --- OTOMATİK MOD: 4 saniyede bir analiz (Kullanıcı İsteği) ---
+  // --- OTOMATİK MOD: SONSUZ DÖNGÜ (Max Hız) ---
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval>;
+    let isActive = true;
+
+    const startLoop = async () => {
+      if (mode === AppMode.IDLE || !isActive) return;
+
+      // 1. Analizi yap
+      await performAnalysis(mode);
+
+      // 2. Biter bitmez (veya hata alsa bile) tekrarla
+      // Ama biraz bekle (500ms) ki cihaz ısınmasın
+      if (isActive && mode !== AppMode.IDLE) {
+        setTimeout(startLoop, 500);
+      }
+    };
 
     if (mode !== AppMode.IDLE) {
-      // Clear previous boxes when starting new mode
       setBoxes([]);
       setAiText("Analiz ediliyor...");
       manualTorchOverrideRef.current = false;
 
-      // 1. Hemen bir analiz yap
-      performAnalysis(mode);
+      // Döngüyü başlat
+      startLoop();
+    }
 
-      // 2. Sonra 2.5 saniyede bir tekrarla (Gerçek Zamanlıya Yakın)
-      intervalId = setInterval(() => {
-        if (!isProcessing) { // Önceki işlem bitmeden yenisine başlama
-          performAnalysis(mode);
-        }
-      }, 2500);
-    } else {
+    return () => {
+      isActive = false; // Cleanup
       setAiText("Mod seçin.");
       setBoxes([]);
       stopCurrentAudio();
@@ -376,12 +384,8 @@ const App: React.FC = () => {
       if (isTorchOn) {
         toggleTorch(false);
       }
-    }
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
     };
-  }, [mode]);
+  }, [mode]); // Sadece mod değişince tetiklenir
 
 
   const handleModeSelect = (selectedMode: AppMode) => {
