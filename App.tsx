@@ -310,7 +310,7 @@ const App: React.FC = () => {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const base64Image = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+        const base64Image = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
 
         if (base64Image) {
           let result;
